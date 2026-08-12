@@ -2,7 +2,7 @@
 
 Internal tool for a small organisation: track equipment, handle loan and return requests through an approval workflow, and answer staff questions about IT policy from its own help docs.
 
-![CI](https://github.com/YOUR_USERNAME/office-asset-tracker/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/mahdiwafi/office-asset-tracker/actions/workflows/ci.yml/badge.svg)
 
 ## Stack
 
