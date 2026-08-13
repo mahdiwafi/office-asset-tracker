@@ -25,3 +25,7 @@ async def create_asset(
 			f'asset with inventory tag {data.inventory_tag!r} already exists'
 		) from error
 	return asset
+
+
+async def delete_asset(session: saorm.Session, actor_id: int, asset_id: int) -> None:
+	raise NotImplementedError  # implemented once the candidate's test arrives

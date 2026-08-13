@@ -1,18 +1,29 @@
 import collections.abc
+import datetime
 
 import pytest_asyncio
 import sqlalchemy
 import sqlalchemy.ext.asyncio as saio
+import sqlalchemy.pool
 
-from app.db import async_session_factory, engine
+from app.core.config import settings
+from app.db import async_session_factory
 from app.models import (
 	Asset,
 	AssetCondition,
 	AssetStatus,
 	AuditEvent,
 	Category,
+	Loan,
+	LoanCondition,
 	User,
 	UserRole,
+)
+
+# Tests run one event loop per test; pooled connections would cross loops.
+# NullPool: every test gets a fresh connection created and closed on its own loop.
+TEST_ENGINE: saio.AsyncEngine = saio.create_async_engine(
+	settings.database_url, poolclass=sqlalchemy.pool.NullPool
 )
 
 _tag_counter: int = 0
@@ -26,7 +37,7 @@ def _next_tag() -> str:
 
 @pytest_asyncio.fixture
 async def db_session() -> collections.abc.AsyncIterator[saio.AsyncSession]:
-	async with engine.connect() as connection:
+	async with TEST_ENGINE.connect() as connection:
 		transaction = await connection.begin()
 		async with async_session_factory(bind=connection) as test_session:
 			yield test_session
@@ -76,6 +87,32 @@ async def asset_factory(db_session: saio.AsyncSession, category_factory):
 		db_session.add(asset)
 		await db_session.flush()
 		return asset
+
+	return _make
+
+
+@pytest_asyncio.fixture
+async def loan_factory(db_session: saio.AsyncSession):
+	async def _make(
+		asset: Asset,
+		borrower: User,
+		*,
+		returned: bool = True,
+		start_date: datetime.date | None = None,
+		due_date: datetime.date | None = None,
+	) -> Loan:
+		today: datetime.date = datetime.date.today()
+		loan: Loan = Loan(
+			asset_id=asset.id,
+			borrower_id=borrower.id,
+			start_date=start_date or today,
+			due_date=due_date or today + datetime.timedelta(days=14),
+			returned_at=datetime.datetime.now() if returned else None,
+			condition_out=LoanCondition.good,
+		)
+		db_session.add(loan)
+		await db_session.flush()
+		return loan
 
 	return _make
 
