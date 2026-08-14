@@ -1,3 +1,6 @@
+import datetime
+import enum
+
 import sqlalchemy.orm as saorm
 
 from app.models import AuditEvent
@@ -26,7 +29,18 @@ async def record(
 	return event
 
 
+def _jsonable(value: object) -> object:
+	if isinstance(value, enum.Enum):
+		return value.value
+	if isinstance(value, datetime.datetime):
+		return value.isoformat()
+	if isinstance(value, datetime.date):
+		return value.isoformat()
+	return value
+
+
 def snapshot(entity: object) -> dict:
-	return {
-		column.name: getattr(entity, column.name) for column in entity.__table__.columns
-	}
+	values: dict = {}
+	for column in entity.__table__.columns:
+		values[column.name] = _jsonable(getattr(entity, column.name))
+	return values
