@@ -10,8 +10,8 @@
 import pytest
 
 from app.schemas.asset import AssetCreate
-from app.services.assets import create_asset
-from app.services.errors import InventoryTagTakenError
+from app.services.assets import create_asset, delete_asset
+from app.services.errors import AssetHasLoanHistoryError, InventoryTagTakenError
 
 # ----------------------------------------------------------------- live rules
 
@@ -42,9 +42,14 @@ async def test_an_asset_cannot_have_overlapping_active_loans() -> None:
 	assert False  # spec only — fails red until implemented
 
 
-@pytest.mark.xfail(reason='[CP] spec only — enforced in Day 2 service layer')
-async def test_an_asset_with_past_loans_cannot_be_hard_deleted() -> None:
-	assert False  # spec only — fails red until implemented
+async def test_an_asset_with_past_loans_cannot_be_hard_deleted(
+	db_session, user_factory, asset_factory, loan_factory
+) -> None:
+	actor = await user_factory()
+	asset = await asset_factory()
+	await loan_factory(asset, actor)
+	with pytest.raises(AssetHasLoanHistoryError):
+		await delete_asset(db_session, actor.id, asset.id)
 
 
 @pytest.mark.xfail(reason='[CP] spec only — enforced in Day 2 service layer')

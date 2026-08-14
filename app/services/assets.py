@@ -3,7 +3,11 @@ import sqlalchemy.orm as saorm
 
 from app.models import Asset
 from app.schemas.asset import AssetCreate
-from app.services.errors import InventoryTagTakenError
+from app.services.errors import (
+	AssetHasLoanHistoryError,
+	AssetNotFoundError,
+	InventoryTagTakenError,
+)
 
 
 async def create_asset(
@@ -28,4 +32,13 @@ async def create_asset(
 
 
 async def delete_asset(session: saorm.Session, actor_id: int, asset_id: int) -> None:
-	raise NotImplementedError  # implemented once the candidate's test arrives
+	asset: Asset | None = await session.get(Asset, asset_id)
+	if asset is None:
+		raise AssetNotFoundError(f'asset {asset_id} not found')
+	await session.delete(asset)
+	try:
+		await session.flush()
+	except sqlalchemy.exc.IntegrityError as error:
+		raise AssetHasLoanHistoryError(
+			f'asset {asset_id} has loan history and cannot be hard deleted'
+		) from error

@@ -6,6 +6,10 @@ class InventoryTagTakenError(DomainError):
 	pass
 
 
+class AssetNotFoundError(DomainError):
+	pass
+
+
 class AssetUnavailableError(DomainError):
 	pass
 
