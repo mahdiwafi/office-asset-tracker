@@ -7,11 +7,20 @@
 #
 # Remove an xfail marker the moment a stub becomes a real test.
 
+import datetime
+
 import pytest
 
+from app.models import LoanCondition
 from app.schemas.asset import AssetCreate
+from app.schemas.loan import LoanCreate
 from app.services.assets import create_asset, delete_asset
-from app.services.errors import AssetHasLoanHistoryError, InventoryTagTakenError
+from app.services.errors import (
+	AssetHasLoanHistoryError,
+	InventoryTagTakenError,
+	LoanDurationExceededError,
+)
+from app.services.loans import MAX_LOAN_DURATION_DAYS, create_loan
 
 # ----------------------------------------------------------------- live rules
 
@@ -29,6 +38,36 @@ async def test_asset_creation_fails_if_inventory_tag_is_not_unique(
 		await create_asset(db_session, actor.id, first_asset)
 
 
+async def test_an_asset_with_past_loans_cannot_be_hard_deleted(
+	db_session, user_factory, asset_factory, loan_factory
+) -> None:
+	actor = await user_factory()
+	asset = await asset_factory()
+	await loan_factory(asset, actor)
+	with pytest.raises(AssetHasLoanHistoryError):
+		await delete_asset(db_session, actor.id, asset.id)
+
+
+async def test_loan_due_date_cannot_exceed_maximum_allowed_duration(
+	db_session, user_factory, asset_factory
+) -> None:
+	actor = await user_factory()
+	asset = await asset_factory()
+	with pytest.raises(LoanDurationExceededError):
+		await create_loan(
+			db_session,
+			actor.id,
+			LoanCreate(
+				asset_id=asset.id,
+				borrower_id=actor.id,
+				start_date=datetime.date.today(),
+				due_date=datetime.date.today()
+				+ datetime.timedelta(days=MAX_LOAN_DURATION_DAYS + 1),
+				condition_out=LoanCondition.good,
+			),
+		)
+
+
 # ----------------------------------------------------------------- spec stubs
 
 
@@ -42,23 +81,8 @@ async def test_an_asset_cannot_have_overlapping_active_loans() -> None:
 	assert False  # spec only — fails red until implemented
 
 
-async def test_an_asset_with_past_loans_cannot_be_hard_deleted(
-	db_session, user_factory, asset_factory, loan_factory
-) -> None:
-	actor = await user_factory()
-	asset = await asset_factory()
-	await loan_factory(asset, actor)
-	with pytest.raises(AssetHasLoanHistoryError):
-		await delete_asset(db_session, actor.id, asset.id)
-
-
 @pytest.mark.xfail(reason='[CP] spec only — enforced in Day 2 service layer')
 async def test_loan_request_cannot_be_created_for_an_unavailable_asset() -> None:
-	assert False  # spec only — fails red until implemented
-
-
-@pytest.mark.xfail(reason='[CP] spec only — enforced in Day 2 service layer')
-async def test_loan_due_date_cannot_exceed_maximum_allowed_duration() -> None:
 	assert False  # spec only — fails red until implemented
 
 
