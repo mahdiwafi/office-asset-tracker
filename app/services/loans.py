@@ -59,7 +59,19 @@ async def create_loan(session: saorm.Session, actor_id: int, data: LoanCreate) -
 		condition_out=data.condition_out,
 	)
 	session.add(loan)
-	await session.flush()
+	try:
+		await session.flush()
+	except sqlalchemy.exc.IntegrityError as error:
+		# The loans_no_overlap exclusion constraint rejected a conflicting
+		# insert that the application-level check above could not see (the
+		# race window). Only translate exclusion violations (sqlstate 23P01);
+		# FK violations keep their own meaning.
+		if getattr(error.orig, 'sqlstate', None) == '23P01':
+			raise LoanOverlapError(
+				f'asset {data.asset_id} already has an active loan '
+				f'overlapping {data.start_date} to {data.due_date}'
+			) from error
+		raise
 	return loan
 
 
@@ -118,7 +130,17 @@ async def extend_loan(
 				f'loan {loan_id} is overdue; extending it requires an approved escalation'
 			)
 	loan.due_date = new_due_date
-	await session.flush()
+	try:
+		await session.flush()
+	except sqlalchemy.exc.IntegrityError as error:
+		# Moving an active loan's due date into another active loan's range
+		# is rejected by the same exclusion constraint.
+		if getattr(error.orig, 'sqlstate', None) == '23P01':
+			raise LoanOverlapError(
+				f'extending loan {loan_id} to {new_due_date} would overlap '
+				f'another active loan'
+			) from error
+		raise
 	await record(
 		session,
 		actor_id=actor_id,

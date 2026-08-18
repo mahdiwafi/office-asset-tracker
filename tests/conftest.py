@@ -1,4 +1,5 @@
 import collections.abc
+import contextlib
 import datetime
 
 import pytest_asyncio
@@ -41,7 +42,8 @@ async def db_session() -> collections.abc.AsyncIterator[saio.AsyncSession]:
 		transaction = await connection.begin()
 		async with async_session_factory(bind=connection) as test_session:
 			yield test_session
-		await transaction.rollback()
+		# close(): rollback if still active, no-op if the test already committed.
+		await transaction.close()
 
 
 @pytest_asyncio.fixture
@@ -87,6 +89,28 @@ async def asset_factory(db_session: saio.AsyncSession, category_factory):
 		db_session.add(asset)
 		await db_session.flush()
 		return asset
+
+	return _make
+
+
+@pytest_asyncio.fixture
+async def session_factory():
+	# Independent session on its own connection — like a separate web
+	# request. Used by the concurrency checkpoints.
+	# No transaction is begun up front: a Session bound to a connection
+	# that already has a transaction joins it in rollback-only mode and
+	# its commit() commits nothing. Here the session starts its own
+	# transaction on first use, so session.commit() really commits;
+	# session.close() rolls back anything left uncommitted.
+	@contextlib.asynccontextmanager
+	async def _make() -> collections.abc.AsyncIterator[saio.AsyncSession]:
+		connection = await TEST_ENGINE.connect()
+		session = async_session_factory(bind=connection)
+		try:
+			yield session
+		finally:
+			await session.close()
+			await connection.close()
 
 	return _make
 
