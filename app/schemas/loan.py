@@ -25,3 +25,16 @@ class LoanRead(pydantic.BaseModel):
 	returned_at: datetime.datetime | None
 	condition_out: LoanCondition
 	condition_in: LoanCondition | None
+
+
+class LoanListItem(pydantic.BaseModel):
+	id: int
+	asset_id: int
+	asset_name: str
+	borrower_id: int
+	borrower_name: str
+	start_date: datetime.date
+	due_date: datetime.date
+	returned_at: datetime.datetime | None
+	condition_out: LoanCondition
+	condition_in: LoanCondition | None

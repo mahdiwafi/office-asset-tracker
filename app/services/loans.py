@@ -150,3 +150,30 @@ async def extend_loan(
 		after=snapshot(loan),
 	)
 	return loan
+
+
+async def list_loans(
+	session: saorm.Session, borrower_id: int | None = None
+) -> list[dict]:
+	query = sqlalchemy.select(Loan).order_by(Loan.start_date.desc())
+	if borrower_id is not None:
+		query = query.where(Loan.borrower_id == borrower_id)
+	loans = (await session.scalars(query)).all()
+	# Deliberately lazy: loan.asset and loan.borrower load with one query
+	# per row. The Day 3 N+1 checkpoint counts these queries and fixes
+	# them with eager loading.
+	return [
+		{
+			'id': loan.id,
+			'asset_id': loan.asset_id,
+			'asset_name': loan.asset.name,
+			'borrower_id': loan.borrower_id,
+			'borrower_name': loan.borrower.name,
+			'start_date': loan.start_date,
+			'due_date': loan.due_date,
+			'returned_at': loan.returned_at,
+			'condition_out': loan.condition_out,
+			'condition_in': loan.condition_in,
+		}
+		for loan in loans
+	]

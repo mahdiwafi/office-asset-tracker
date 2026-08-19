@@ -1,6 +1,7 @@
 import datetime
 import enum
 
+import sqlalchemy
 import sqlalchemy.orm as saorm
 
 from app.models import AuditEvent
@@ -44,3 +45,12 @@ def snapshot(entity: object) -> dict:
 	for column in entity.__table__.columns:
 		values[column.name] = _jsonable(getattr(entity, column.name))
 	return values
+
+
+async def list_audit(
+	session: saorm.Session, entity_type: str | None = None
+) -> list[AuditEvent]:
+	query = sqlalchemy.select(AuditEvent).order_by(AuditEvent.at.desc())
+	if entity_type is not None:
+		query = query.where(AuditEvent.entity_type == entity_type)
+	return list(await session.scalars(query))

@@ -82,3 +82,15 @@ async def delete_asset(session: saorm.Session, actor_id: int, asset_id: int) -> 
 		entity_id=asset_id,
 		before=before,
 	)
+
+
+async def get_asset(session: saorm.Session, asset_id: int) -> Asset:
+	asset: Asset | None = await session.get(Asset, asset_id)
+	if asset is None:
+		raise AssetNotFoundError(f'asset {asset_id} not found')
+	return asset
+
+
+async def list_assets(session: saorm.Session) -> list[Asset]:
+	query = sqlalchemy.select(Asset).order_by(Asset.inventory_tag)
+	return list(await session.scalars(query))

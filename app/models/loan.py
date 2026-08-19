@@ -6,6 +6,7 @@ import sqlalchemy.orm as saorm
 
 from app.models.asset import Asset
 from app.models.base import Base
+from app.models.user import User
 
 
 class LoanCondition(enum.Enum):
@@ -45,3 +46,4 @@ class Loan(Base):
 	)
 
 	asset: saorm.Mapped[Asset] = saorm.relationship(back_populates='loans')
+	borrower: saorm.Mapped[User] = saorm.relationship()

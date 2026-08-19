@@ -17,3 +17,8 @@ class ApprovalRead(pydantic.BaseModel):
 	decision: ApprovalDecision
 	note: str | None
 	decided_at: object
+
+
+class ApprovalDecisionBody(pydantic.BaseModel):
+	decision: ApprovalDecision
+	note: str | None = None

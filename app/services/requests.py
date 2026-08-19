@@ -40,3 +40,12 @@ async def create_request(
 		after=snapshot(request),
 	)
 	return request
+
+
+async def list_requests(
+	session: saorm.Session, status: RequestStatus | None = None
+) -> list[Request]:
+	query = sqlalchemy.select(Request).order_by(Request.created_at.desc())
+	if status is not None:
+		query = query.where(Request.status == status)
+	return list(await session.scalars(query))
