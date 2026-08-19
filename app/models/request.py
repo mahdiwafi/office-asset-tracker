@@ -31,6 +31,12 @@ class Request(Base):
 		index=True,
 	)
 	justification: saorm.Mapped[str] = saorm.mapped_column(sqlalchemy.Text)
+	# Idempotency-Key header: one key may ever create one request. The
+	# unique constraint is the arbiter; the service pre-check is the
+	# fast path (same TOCTOU shape as the loan overlap).
+	idempotency_key: saorm.Mapped[str | None] = saorm.mapped_column(
+		sqlalchemy.String(64), unique=True
+	)
 	status: saorm.Mapped[RequestStatus] = saorm.mapped_column(
 		sqlalchemy.Enum(RequestStatus, native_enum=False),
 		default=RequestStatus.pending,

@@ -291,6 +291,31 @@ async def test_loan_list_renders_asset_and_borrower_names(api_client) -> None:
 	assert rows[0]['borrower_name'] == 'http-borrower6'
 
 
+async def test_request_creation_is_idempotent_by_key(api_client) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-13')
+	requester_id = await _seed_user(
+		session, 'http-requester3@example.com', UserRole.staff
+	)
+	headers = {
+		'X-Actor-Id': str(requester_id),
+		'Idempotency-Key': 'request-create-1',
+	}
+	payload = {'asset_id': asset_id, 'justification': 'double submission'}
+	first = await client.post('/requests', headers=headers, json=payload)
+	assert first.status_code == 201
+	# The replay returns the original request with 200 — and it must do so
+	# before the pending-check would have 409'd on the still-pending row.
+	second = await client.post('/requests', headers=headers, json=payload)
+	assert second.status_code == 200
+	assert second.json()['id'] == first.json()['id']
+	requests = await session.scalars(
+		sqlalchemy.select(Request).where(Request.asset_id == asset_id)
+	)
+	assert len(requests.all()) == 1
+
+
 async def test_loan_list_paginates(api_client) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)

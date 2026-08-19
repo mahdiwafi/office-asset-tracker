@@ -16,11 +16,21 @@ router: fastapi.APIRouter = fastapi.APIRouter(prefix='/requests', tags=['request
 @router.post('', response_model=RequestRead, status_code=201)
 async def create_request(
 	data: RequestCreate,
+	idempotency_key: str | None = fastapi.Header(default=None, alias='Idempotency-Key'),
 	actor_id: int = fastapi.Depends(get_actor_id),
 	session: saorm.Session = fastapi.Depends(get_db),
+	response: fastapi.Response = None,
 ) -> Request:
-	request = await request_service.create_request(session, actor_id, data)
-	await session.commit()
+	request, created = await request_service.create_request(
+		session, actor_id, data, idempotency_key
+	)
+	if created:
+		await session.commit()
+		response.status_code = 201
+	else:
+		# Replay: the key already created this request once — return the
+		# original with 200 instead of 201.
+		response.status_code = 200
 	return request
 
 

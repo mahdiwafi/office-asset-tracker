@@ -160,7 +160,7 @@ async def test_a_request_cannot_be_approved_by_a_non_manager(
 ) -> None:
 	actor = await user_factory()  # staff — not an approver
 	asset = await asset_factory()
-	request = await create_request(
+	request, _created = await create_request(
 		db_session,
 		actor.id,
 		RequestCreate(asset_id=asset.id, justification='need a laptop'),

@@ -9,8 +9,21 @@ from app.services.errors import PendingRequestExistsError
 
 
 async def create_request(
-	session: saorm.Session, actor_id: int, data: RequestCreate
-) -> Request:
+	session: saorm.Session,
+	actor_id: int,
+	data: RequestCreate,
+	idempotency_key: str | None = None,
+) -> tuple[Request, bool]:
+	# Idempotency fast path: a replay of a completed request returns the
+	# original instead of creating a duplicate. The unique constraint is
+	# the backstop for the check-then-act race between two simultaneous
+	# first submissions (same shape as the loan overlap in Day 2).
+	if idempotency_key is not None:
+		existing: Request | None = await session.scalar(
+			sqlalchemy.select(Request).where(Request.idempotency_key == idempotency_key)
+		)
+		if existing is not None:
+			return existing, False
 	pending_count: int = await session.scalar(
 		sqlalchemy.select(sqlalchemy.func.count())
 		.select_from(Request)
@@ -28,9 +41,29 @@ async def create_request(
 		asset_id=data.asset_id,
 		category_id=data.category_id,
 		justification=data.justification,
+		idempotency_key=idempotency_key,
 	)
 	session.add(request)
-	await session.flush()
+	try:
+		await session.flush()
+	except sqlalchemy.exc.IntegrityError as error:
+		# The unique constraint rejected a concurrent first submission with
+		# the same key. Roll back the failed insert and return the winner's
+		# record. If the winner has not committed yet, re-raise — the
+		# client's retry takes the fast path above.
+		if (
+			idempotency_key is not None
+			and getattr(error.orig, 'sqlstate', None) == '23505'
+		):
+			await session.rollback()
+			winner: Request | None = await session.scalar(
+				sqlalchemy.select(Request).where(
+					Request.idempotency_key == idempotency_key
+				)
+			)
+			if winner is not None:
+				return winner, False
+		raise
 	await record(
 		session,
 		actor_id=actor_id,
@@ -39,7 +72,7 @@ async def create_request(
 		entity_id=request.id,
 		after=snapshot(request),
 	)
-	return request
+	return request, True
 
 
 async def list_requests(
