@@ -2,13 +2,15 @@ import collections.abc
 import contextlib
 import datetime
 
+import httpx
 import pytest_asyncio
 import sqlalchemy
 import sqlalchemy.ext.asyncio as saio
 import sqlalchemy.pool
 
 from app.core.config import settings
-from app.db import async_session_factory
+from app.db import async_session_factory, get_db
+from app.main import app
 from app.models import (
 	Asset,
 	AssetCondition,
@@ -139,6 +141,33 @@ async def loan_factory(db_session: saio.AsyncSession):
 		return loan
 
 	return _make
+
+
+@pytest_asyncio.fixture
+async def api_client():
+	# Runs every request through the real ASGI app (no HTTP server) on a
+	# single connection with one per-test transaction. The app session is
+	# bound to that connection, so it joins the outer transaction in
+	# rollback-only mode (the Day 2 gotcha, now the feature): the routers'
+	# session.commit() commits nothing, every request sees every other
+	# request's writes, and teardown rolls the whole test back.
+	# Assert through the yielded `session` — a fresh session would open a
+	# new transaction and see none of the test's writes.
+	connection = await TEST_ENGINE.connect()
+	transaction = await connection.begin()
+	session = async_session_factory(bind=connection)
+
+	async def _override_get_db():
+		yield session
+
+	app.dependency_overrides[get_db] = _override_get_db
+	transport = httpx.ASGITransport(app=app)
+	async with httpx.AsyncClient(transport=transport, base_url='http://test') as client:
+		yield client, session
+	app.dependency_overrides.pop(get_db, None)
+	await session.close()
+	await transaction.close()
+	await connection.close()
 
 
 @pytest_asyncio.fixture
