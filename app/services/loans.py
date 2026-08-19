@@ -2,6 +2,7 @@ import datetime
 
 import sqlalchemy
 import sqlalchemy.orm as saorm
+from sqlalchemy.orm import selectinload
 
 from app.models import Asset, AssetStatus, Loan, LoanCondition
 from app.models.approval import Approval, ApprovalDecision
@@ -158,10 +159,16 @@ async def list_loans(
 	query = sqlalchemy.select(Loan).order_by(Loan.start_date.desc())
 	if borrower_id is not None:
 		query = query.where(Loan.borrower_id == borrower_id)
-	loans = (await session.scalars(query)).all()
-	# Deliberately lazy: loan.asset and loan.borrower load with one query
-	# per row. The Day 3 N+1 checkpoint counts these queries and fixes
-	# them with eager loading.
+	# Eagerly loaded after the Day 3 N+1 checkpoint. Without this, a lazy
+	# loan.asset / loan.borrower load is not just one extra query per row —
+	# in an async session it raises MissingGreenlet (IO outside the greenlet)
+	# and the list 500s on its first real row. selectinload fetches each
+	# relationship in one extra query for all rows.
+	loans = (
+		await session.scalars(
+			query.options(selectinload(Loan.asset), selectinload(Loan.borrower))
+		)
+	).all()
 	return [
 		{
 			'id': loan.id,
