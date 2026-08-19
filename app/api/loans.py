@@ -8,6 +8,7 @@ import sqlalchemy.orm as saorm
 from app.api.dependencies import get_actor_id
 from app.db import get_db
 from app.models import Loan, LoanCondition
+from app.schemas.common import Paginated
 from app.schemas.loan import LoanCreate, LoanListItem, LoanRead
 from app.services import loans as loan_service
 
@@ -25,12 +26,15 @@ async def create_loan(
 	return loan
 
 
-@router.get('', response_model=list[LoanListItem])
+@router.get('', response_model=Paginated[LoanListItem])
 async def list_loans(
 	borrower_id: int | None = None,
+	limit: int = fastapi.Query(50, ge=1, le=200),
+	offset: int = fastapi.Query(0, ge=0),
 	session: saorm.Session = fastapi.Depends(get_db),
-) -> list[dict]:
-	return await loan_service.list_loans(session, borrower_id)
+) -> Paginated[LoanListItem]:
+	items, total = await loan_service.list_loans(session, borrower_id, limit, offset)
+	return Paginated(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post('/{loan_id}/return', response_model=LoanRead)

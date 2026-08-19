@@ -48,9 +48,16 @@ def snapshot(entity: object) -> dict:
 
 
 async def list_audit(
-	session: saorm.Session, entity_type: str | None = None
-) -> list[AuditEvent]:
+	session: saorm.Session,
+	entity_type: str | None = None,
+	limit: int = 50,
+	offset: int = 0,
+) -> tuple[list[AuditEvent], int]:
 	query = sqlalchemy.select(AuditEvent).order_by(AuditEvent.at.desc())
+	count_query = sqlalchemy.select(sqlalchemy.func.count()).select_from(AuditEvent)
 	if entity_type is not None:
 		query = query.where(AuditEvent.entity_type == entity_type)
-	return list(await session.scalars(query))
+		count_query = count_query.where(AuditEvent.entity_type == entity_type)
+	total: int = await session.scalar(count_query)
+	items = list(await session.scalars(query.limit(limit).offset(offset)))
+	return items, total

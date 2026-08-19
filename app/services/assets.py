@@ -91,6 +91,12 @@ async def get_asset(session: saorm.Session, asset_id: int) -> Asset:
 	return asset
 
 
-async def list_assets(session: saorm.Session) -> list[Asset]:
+async def list_assets(
+	session: saorm.Session, limit: int = 50, offset: int = 0
+) -> tuple[list[Asset], int]:
 	query = sqlalchemy.select(Asset).order_by(Asset.inventory_tag)
-	return list(await session.scalars(query))
+	total: int = await session.scalar(
+		sqlalchemy.select(sqlalchemy.func.count()).select_from(Asset)
+	)
+	items = list(await session.scalars(query.limit(limit).offset(offset)))
+	return items, total

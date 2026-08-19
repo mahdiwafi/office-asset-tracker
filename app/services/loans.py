@@ -154,11 +154,16 @@ async def extend_loan(
 
 
 async def list_loans(
-	session: saorm.Session, borrower_id: int | None = None
-) -> list[dict]:
+	session: saorm.Session,
+	borrower_id: int | None = None,
+	limit: int = 50,
+	offset: int = 0,
+) -> tuple[list[dict], int]:
 	query = sqlalchemy.select(Loan).order_by(Loan.start_date.desc())
+	count_query = sqlalchemy.select(sqlalchemy.func.count()).select_from(Loan)
 	if borrower_id is not None:
 		query = query.where(Loan.borrower_id == borrower_id)
+		count_query = count_query.where(Loan.borrower_id == borrower_id)
 	# Eagerly loaded after the Day 3 N+1 checkpoint. Without this, a lazy
 	# loan.asset / loan.borrower load is not just one extra query per row —
 	# in an async session it raises MissingGreenlet (IO outside the greenlet)
@@ -167,8 +172,11 @@ async def list_loans(
 	loans = (
 		await session.scalars(
 			query.options(selectinload(Loan.asset), selectinload(Loan.borrower))
+			.limit(limit)
+			.offset(offset)
 		)
 	).all()
+	total: int = await session.scalar(count_query)
 	return [
 		{
 			'id': loan.id,
@@ -183,4 +191,4 @@ async def list_loans(
 			'condition_in': loan.condition_in,
 		}
 		for loan in loans
-	]
+	], total

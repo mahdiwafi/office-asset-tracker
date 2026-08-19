@@ -6,6 +6,7 @@ import sqlalchemy.orm as saorm
 from app.api.dependencies import get_actor_id
 from app.db import get_db
 from app.models import Request, RequestStatus
+from app.schemas.common import Paginated
 from app.schemas.request import RequestCreate, RequestRead
 from app.services import requests as request_service
 
@@ -23,9 +24,12 @@ async def create_request(
 	return request
 
 
-@router.get('', response_model=list[RequestRead])
+@router.get('', response_model=Paginated[RequestRead])
 async def list_requests(
 	status: RequestStatus | None = None,
+	limit: int = fastapi.Query(50, ge=1, le=200),
+	offset: int = fastapi.Query(0, ge=0),
 	session: saorm.Session = fastapi.Depends(get_db),
-) -> list[Request]:
-	return await request_service.list_requests(session, status)
+) -> Paginated[RequestRead]:
+	items, total = await request_service.list_requests(session, status, limit, offset)
+	return Paginated(items=items, total=total, limit=limit, offset=offset)

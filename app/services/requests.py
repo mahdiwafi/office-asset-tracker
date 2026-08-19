@@ -43,9 +43,16 @@ async def create_request(
 
 
 async def list_requests(
-	session: saorm.Session, status: RequestStatus | None = None
-) -> list[Request]:
+	session: saorm.Session,
+	status: RequestStatus | None = None,
+	limit: int = 50,
+	offset: int = 0,
+) -> tuple[list[Request], int]:
 	query = sqlalchemy.select(Request).order_by(Request.created_at.desc())
+	count_query = sqlalchemy.select(sqlalchemy.func.count()).select_from(Request)
 	if status is not None:
 		query = query.where(Request.status == status)
-	return list(await session.scalars(query))
+		count_query = count_query.where(Request.status == status)
+	total: int = await session.scalar(count_query)
+	items = list(await session.scalars(query.limit(limit).offset(offset)))
+	return items, total

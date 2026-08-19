@@ -248,7 +248,7 @@ async def test_approval_flow_returns_201_and_writes_audit(api_client) -> None:
 	audit = await client.get('/audit', params={'entity_type': 'request'})
 	events = [
 		event
-		for event in audit.json()
+		for event in audit.json()['items']
 		if event['action'] == 'request.decide' and event['entity_id'] == request_id
 	]
 	assert len(events) == 1
@@ -281,11 +281,38 @@ async def test_loan_list_renders_asset_and_borrower_names(api_client) -> None:
 		json=_loan_payload(asset_id, borrower_id),
 	)
 	loan_id = create.json()['id']
-	# The list joins the asset and borrower names for display — one lazy
-	# query per row; the N+1 checkpoint counts those queries next.
+	# The list joins the asset and borrower names for display, eagerly
+	# loaded (selectinload) after the N+1 checkpoint.
 	response = await client.get('/loans')
 	assert response.status_code == 200
-	rows = [row for row in response.json() if row['id'] == loan_id]
+	rows = [row for row in response.json()['items'] if row['id'] == loan_id]
 	assert len(rows) == 1
 	assert rows[0]['asset_name'] == 'MacBook Pro 14'
 	assert rows[0]['borrower_name'] == 'http-borrower6'
+
+
+async def test_loan_list_paginates(api_client) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_ids = [
+		await _seed_asset(session, category_id, f'HTTP-ASSET-{index}')
+		for index in range(10, 13)
+	]
+	borrower_id = await _seed_user(
+		session, 'http-borrower7@example.com', UserRole.staff
+	)
+	for asset_id in asset_ids:
+		await client.post(
+			'/loans',
+			headers={'X-Actor-Id': str(borrower_id)},
+			json=_loan_payload(asset_id, borrower_id),
+		)
+	page = await client.get('/loans', params={'limit': 2, 'offset': 0})
+	assert page.status_code == 200
+	body = page.json()
+	assert len(body['items']) == 2
+	# total counts every loan in the table, including rows committed by
+	# other test files — the page only ever carries `limit` rows.
+	assert body['total'] >= 3
+	assert body['limit'] == 2
+	assert body['offset'] == 0

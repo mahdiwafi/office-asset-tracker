@@ -7,6 +7,7 @@ from app.api.dependencies import get_actor_id
 from app.db import get_db
 from app.models import Asset, AssetStatus
 from app.schemas.asset import AssetCreate, AssetRead
+from app.schemas.common import Paginated
 from app.services import assets as asset_service
 
 router: fastapi.APIRouter = fastapi.APIRouter(prefix='/assets', tags=['assets'])
@@ -23,11 +24,14 @@ async def create_asset(
 	return asset
 
 
-@router.get('', response_model=list[AssetRead])
+@router.get('', response_model=Paginated[AssetRead])
 async def list_assets(
+	limit: int = fastapi.Query(50, ge=1, le=200),
+	offset: int = fastapi.Query(0, ge=0),
 	session: saorm.Session = fastapi.Depends(get_db),
-) -> list[Asset]:
-	return await asset_service.list_assets(session)
+) -> Paginated[AssetRead]:
+	items, total = await asset_service.list_assets(session, limit, offset)
+	return Paginated(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get('/{asset_id}', response_model=AssetRead)
