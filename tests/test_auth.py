@@ -22,6 +22,18 @@ FIXTURES = pathlib.Path('tests/fixtures')
 OID = '8fc67598-d308-469f-9bc1-f11eaffb0418'
 
 
+@pytest.fixture(scope='session', autouse=True)
+def _entra_settings():
+	# CI has no .env, so the tenant/client ids are empty and the service's
+	# configuration guard fires before any test runs. Give the auth tests
+	# fake values; the mint helpers derive iss/aud from the same settings,
+	# so both sides always agree. test_unconfigured_raises overrides them.
+	if not settings.entra_tenant_id:
+		settings.entra_tenant_id = '00000000-0000-0000-0000-000000000000'
+	if not settings.entra_client_id:
+		settings.entra_client_id = '11111111-1111-1111-1111-111111111111'
+
+
 def _b64url(data: bytes) -> str:
 	return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
 
