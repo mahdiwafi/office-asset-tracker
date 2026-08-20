@@ -56,6 +56,14 @@ async def test_missing_exp_rejected() -> None:
 		await auth.verify_token(mint_token(payload))
 
 
+async def test_api_uri_audience_accepted() -> None:
+	# Tokens the SPA gets for the exposed API scope carry
+	# aud=api://<client_id>, not the bare client id — both are this app.
+	payload = base_payload() | {'aud': f'api://{settings.entra_client_id}'}
+	claims = await auth.verify_token(mint_token(payload))
+	assert claims['aud'] == f'api://{settings.entra_client_id}'
+
+
 async def test_wrong_audience_rejected() -> None:
 	payload = base_payload() | {'aud': 'some-other-app'}
 	with pytest.raises(TokenInvalidError):

@@ -113,7 +113,11 @@ async def verify_token(token: str) -> dict:
 	if nbf is not None and now < nbf - CLOCK_SKEW_SECONDS:
 		raise TokenExpiredError('token is not yet valid')
 
-	if payload.get('aud') != settings.entra_client_id:
+	if payload.get('aud') not in (settings.entra_client_id, settings.api_audience):
+		# The SPA's token for the exposed API scope carries the Application
+		# ID URI as its audience; a token for the client itself carries the
+		# GUID. Either is this app — anything else is a token for someone
+		# else's API.
 		raise TokenInvalidError(
 			f'token audience {payload.get("aud")!r} does not match this app'
 		)

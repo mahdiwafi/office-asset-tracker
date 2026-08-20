@@ -484,3 +484,19 @@ async def test_read_routes_require_token(api_client, path: str) -> None:
 	response = await client.get(path)
 	assert response.status_code == 401
 	assert 'missing bearer token' in response.json()['detail']
+
+
+async def test_cors_preflight_allows_frontend_origin(api_client) -> None:
+	# The SPA on localhost:3000 must be able to call the API: the browser
+	# sends an OPTIONS preflight and only proceeds if the response names
+	# the origin.
+	client, _session = api_client
+	response = await client.options(
+		'/assets',
+		headers={
+			'Origin': 'http://localhost:3000',
+			'Access-Control-Request-Method': 'GET',
+		},
+	)
+	assert response.status_code == 200
+	assert response.headers['access-control-allow-origin'] == 'http://localhost:3000'
