@@ -2,6 +2,7 @@
 
 import datetime
 
+import pytest
 import sqlalchemy
 
 from app.models import (
@@ -280,7 +281,11 @@ async def test_approval_flow_returns_201_and_writes_audit(
 	assert request.status is RequestStatus.approved
 	assert request.decided_at is not None
 	# The decision must leave an audit trail visible over HTTP.
-	audit = await client.get('/audit', params={'entity_type': 'request'})
+	audit = await client.get(
+		'/audit',
+		params={'entity_type': 'request'},
+		headers=bearer_headers(requester_oid),
+	)
 	events = [
 		event
 		for event in audit.json()['items']
@@ -322,7 +327,7 @@ async def test_loan_list_renders_asset_and_borrower_names(
 	loan_id = create.json()['id']
 	# The list joins the asset and borrower names for display, eagerly
 	# loaded (selectinload) after the N+1 checkpoint.
-	response = await client.get('/loans')
+	response = await client.get('/loans', headers=bearer_headers(oid))
 	assert response.status_code == 200
 	rows = [row for row in response.json()['items'] if row['id'] == loan_id]
 	assert len(rows) == 1
@@ -373,7 +378,9 @@ async def test_loan_list_paginates(api_client, bearer_headers) -> None:
 			headers=bearer_headers(oid),
 			json=_loan_payload(asset_id, borrower_id),
 		)
-	page = await client.get('/loans', params={'limit': 2, 'offset': 0})
+	page = await client.get(
+		'/loans', params={'limit': 2, 'offset': 0}, headers=bearer_headers(oid)
+	)
 	assert page.status_code == 200
 	body = page.json()
 	assert len(body['items']) == 2
@@ -458,3 +465,22 @@ async def test_first_request_provisions_user_from_token(
 		sqlalchemy.select(AuditEvent).where(AuditEvent.action == 'asset.create')
 	)
 	assert event.actor_id == user.id
+
+
+@pytest.mark.parametrize(
+	('path',),
+	[
+		('/assets',),
+		('/assets/1',),
+		('/loans',),
+		('/requests',),
+		('/audit',),
+	],
+)
+async def test_read_routes_require_token(api_client, path: str) -> None:
+	# Day 4 audit decision: every route — including the read-only catalog
+	# and audit trail — requires a valid bearer token. No token, no data.
+	client, _session = api_client
+	response = await client.get(path)
+	assert response.status_code == 401
+	assert 'missing bearer token' in response.json()['detail']

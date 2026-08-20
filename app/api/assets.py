@@ -28,6 +28,7 @@ async def create_asset(
 async def list_assets(
 	limit: int = fastapi.Query(50, ge=1, le=200),
 	offset: int = fastapi.Query(0, ge=0),
+	current_user: User = fastapi.Depends(get_current_user),
 	session: saorm.Session = fastapi.Depends(get_db),
 ) -> Paginated[AssetRead]:
 	items, total = await asset_service.list_assets(session, limit, offset)
@@ -37,6 +38,7 @@ async def list_assets(
 @router.get('/{asset_id}', response_model=AssetRead)
 async def get_asset(
 	asset_id: int,
+	current_user: User = fastapi.Depends(get_current_user),
 	session: saorm.Session = fastapi.Depends(get_db),
 ) -> Asset:
 	return await asset_service.get_asset(session, asset_id)

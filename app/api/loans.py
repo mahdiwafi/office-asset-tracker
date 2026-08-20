@@ -31,6 +31,7 @@ async def list_loans(
 	borrower_id: int | None = None,
 	limit: int = fastapi.Query(50, ge=1, le=200),
 	offset: int = fastapi.Query(0, ge=0),
+	current_user: User = fastapi.Depends(get_current_user),
 	session: saorm.Session = fastapi.Depends(get_db),
 ) -> Paginated[LoanListItem]:
 	items, total = await loan_service.list_loans(session, borrower_id, limit, offset)
