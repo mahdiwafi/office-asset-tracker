@@ -56,3 +56,11 @@ class NotAnApproverError(DomainError):
 
 class AlreadyDecidedError(DomainError):
 	pass
+
+
+class TokenInvalidError(DomainError):
+	pass
+
+
+class TokenExpiredError(DomainError):
+	pass

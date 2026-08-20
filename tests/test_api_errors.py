@@ -22,6 +22,8 @@ from app.services.errors import (
 	PendingRequestExistsError,
 	RequestNotFoundError,
 	ReturnConditionMissingError,
+	TokenExpiredError,
+	TokenInvalidError,
 )
 
 
@@ -42,6 +44,9 @@ from app.services.errors import (
 		(RequestNotFoundError('not found'), 404),
 		(NotAnApproverError('not an approver'), 403),
 		(AlreadyDecidedError('decided'), 409),
+		# Unknown identity: 401, unlike 403 (authenticated but not allowed).
+		(TokenInvalidError('invalid'), 401),
+		(TokenExpiredError('expired'), 401),
 		# Unknown subclass falls back to a plain bad request.
 		(DomainError('generic'), 400),
 	],

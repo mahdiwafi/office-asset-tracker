@@ -22,6 +22,8 @@ from app.services.errors import (
 	PendingRequestExistsError,
 	RequestNotFoundError,
 	ReturnConditionMissingError,
+	TokenExpiredError,
+	TokenInvalidError,
 )
 
 STATUS_BY_ERROR: dict[type[DomainError], int] = {
@@ -39,6 +41,10 @@ STATUS_BY_ERROR: dict[type[DomainError], int] = {
 	RequestNotFoundError: 404,
 	NotAnApproverError: 403,
 	AlreadyDecidedError: 409,
+	# Unknown identity: 401 (the caller must authenticate), unlike 403,
+	# which is authenticated-but-not-allowed.
+	TokenInvalidError: 401,
+	TokenExpiredError: 401,
 }
 
 # Any DomainError subclass not in the map (or the base class itself).
