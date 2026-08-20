@@ -74,7 +74,9 @@ def _loan_payload(asset_id: int, borrower_id: int) -> dict:
 	}
 
 
-async def test_create_asset_returns_201_and_persists(api_client, bearer_headers) -> None:
+async def test_create_asset_returns_201_and_persists(
+	api_client, bearer_headers
+) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)
 	# The token's oid is seeded so the audit event names a known user.
@@ -124,7 +126,9 @@ async def test_create_loan_returns_201_and_persists(api_client, bearer_headers) 
 	category_id = await _seed_category(session)
 	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-3')
 	oid = _next_oid()
-	borrower_id = await _seed_user(session, 'http-borrower@example.com', UserRole.staff, oid)
+	borrower_id = await _seed_user(
+		session, 'http-borrower@example.com', UserRole.staff, oid
+	)
 	response = await client.post(
 		'/loans',
 		headers=bearer_headers(oid),
@@ -138,12 +142,16 @@ async def test_create_loan_returns_201_and_persists(api_client, bearer_headers) 
 	assert loan.condition_out is LoanCondition.good
 
 
-async def test_double_booking_same_asset_returns_409(api_client, bearer_headers) -> None:
+async def test_double_booking_same_asset_returns_409(
+	api_client, bearer_headers
+) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)
 	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-4')
 	oid = _next_oid()
-	borrower_id = await _seed_user(session, 'http-borrower2@example.com', UserRole.staff, oid)
+	borrower_id = await _seed_user(
+		session, 'http-borrower2@example.com', UserRole.staff, oid
+	)
 	headers = bearer_headers(oid)
 	payload = _loan_payload(asset_id, borrower_id)
 	first = await client.post('/loans', headers=headers, json=payload)
@@ -158,12 +166,16 @@ async def test_double_booking_same_asset_returns_409(api_client, bearer_headers)
 	assert len(loans.all()) == 1
 
 
-async def test_return_loan_without_condition_returns_400(api_client, bearer_headers) -> None:
+async def test_return_loan_without_condition_returns_400(
+	api_client, bearer_headers
+) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)
 	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-5')
 	oid = _next_oid()
-	borrower_id = await _seed_user(session, 'http-borrower3@example.com', UserRole.staff, oid)
+	borrower_id = await _seed_user(
+		session, 'http-borrower3@example.com', UserRole.staff, oid
+	)
 	headers = bearer_headers(oid)
 	create = await client.post(
 		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
@@ -183,12 +195,12 @@ async def test_loan_longer_than_30_days_returns_422(api_client, bearer_headers) 
 	category_id = await _seed_category(session)
 	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-6')
 	oid = _next_oid()
-	borrower_id = await _seed_user(session, 'http-borrower4@example.com', UserRole.staff, oid)
+	borrower_id = await _seed_user(
+		session, 'http-borrower4@example.com', UserRole.staff, oid
+	)
 	payload = _loan_payload(asset_id, borrower_id)
 	payload['due_date'] = _iso(31)
-	response = await client.post(
-		'/loans', headers=bearer_headers(oid), json=payload
-	)
+	response = await client.post('/loans', headers=bearer_headers(oid), json=payload)
 	assert response.status_code == 422
 	assert 'exceeds the maximum' in response.json()['detail']
 
@@ -196,11 +208,11 @@ async def test_loan_longer_than_30_days_returns_422(api_client, bearer_headers) 
 async def test_loan_for_missing_asset_returns_404(api_client, bearer_headers) -> None:
 	client, session = api_client
 	oid = _next_oid()
-	borrower_id = await _seed_user(session, 'http-borrower5@example.com', UserRole.staff, oid)
-	payload = _loan_payload(999_999, borrower_id)
-	response = await client.post(
-		'/loans', headers=bearer_headers(oid), json=payload
+	borrower_id = await _seed_user(
+		session, 'http-borrower5@example.com', UserRole.staff, oid
 	)
+	payload = _loan_payload(999_999, borrower_id)
+	response = await client.post('/loans', headers=bearer_headers(oid), json=payload)
 	assert response.status_code == 404
 	assert 'asset 999999 not found' in response.json()['detail']
 
@@ -220,7 +232,9 @@ async def test_staff_cannot_approve_returns_403(api_client, bearer_headers) -> N
 	)
 	request_id = create.json()['id']
 	staff_oid = _next_oid()
-	await _seed_user(session, 'http-not-approver@example.com', UserRole.staff, staff_oid)
+	await _seed_user(
+		session, 'http-not-approver@example.com', UserRole.staff, staff_oid
+	)
 	response = await client.post(
 		f'/requests/{request_id}/decision',
 		headers=bearer_headers(staff_oid),
@@ -231,7 +245,9 @@ async def test_staff_cannot_approve_returns_403(api_client, bearer_headers) -> N
 	assert request.status is RequestStatus.pending
 
 
-async def test_approval_flow_returns_201_and_writes_audit(api_client, bearer_headers) -> None:
+async def test_approval_flow_returns_201_and_writes_audit(
+	api_client, bearer_headers
+) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)
 	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-8')
@@ -274,7 +290,9 @@ async def test_approval_flow_returns_201_and_writes_audit(api_client, bearer_hea
 	assert events[0]['actor_id'] == approver_id
 
 
-async def test_decision_on_missing_request_returns_404(api_client, bearer_headers) -> None:
+async def test_decision_on_missing_request_returns_404(
+	api_client, bearer_headers
+) -> None:
 	client, session = api_client
 	oid = _next_oid()
 	await _seed_user(session, 'http-approver2@example.com', UserRole.approver, oid)
@@ -286,12 +304,16 @@ async def test_decision_on_missing_request_returns_404(api_client, bearer_header
 	assert response.status_code == 404
 
 
-async def test_loan_list_renders_asset_and_borrower_names(api_client, bearer_headers) -> None:
+async def test_loan_list_renders_asset_and_borrower_names(
+	api_client, bearer_headers
+) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)
 	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-9')
 	oid = _next_oid()
-	borrower_id = await _seed_user(session, 'http-borrower6@example.com', UserRole.staff, oid)
+	borrower_id = await _seed_user(
+		session, 'http-borrower6@example.com', UserRole.staff, oid
+	)
 	create = await client.post(
 		'/loans',
 		headers=bearer_headers(oid),
@@ -308,14 +330,14 @@ async def test_loan_list_renders_asset_and_borrower_names(api_client, bearer_hea
 	assert rows[0]['borrower_name'] == 'http-borrower6'
 
 
-async def test_request_creation_is_idempotent_by_key(api_client, bearer_headers) -> None:
+async def test_request_creation_is_idempotent_by_key(
+	api_client, bearer_headers
+) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)
 	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-13')
 	oid = _next_oid()
-	await _seed_user(
-		session, 'http-requester3@example.com', UserRole.staff, oid
-	)
+	await _seed_user(session, 'http-requester3@example.com', UserRole.staff, oid)
 	headers = {
 		**bearer_headers(oid),
 		'Idempotency-Key': 'request-create-1',
@@ -342,7 +364,9 @@ async def test_loan_list_paginates(api_client, bearer_headers) -> None:
 		for index in range(10, 13)
 	]
 	oid = _next_oid()
-	borrower_id = await _seed_user(session, 'http-borrower7@example.com', UserRole.staff, oid)
+	borrower_id = await _seed_user(
+		session, 'http-borrower7@example.com', UserRole.staff, oid
+	)
 	for asset_id in asset_ids:
 		await client.post(
 			'/loans',
@@ -409,7 +433,9 @@ async def test_expired_token_returns_401(api_client) -> None:
 	assert 'expired' in response.json()['detail']
 
 
-async def test_first_request_provisions_user_from_token(api_client, bearer_headers) -> None:
+async def test_first_request_provisions_user_from_token(
+	api_client, bearer_headers
+) -> None:
 	# No user is seeded: the token's oid claim creates the User row on
 	# first login, and the audit trail names the provisioned actor.
 	client, session = api_client
