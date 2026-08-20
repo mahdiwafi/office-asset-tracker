@@ -15,15 +15,31 @@ export class ApiError extends Error {
 	}
 }
 
+// The app signs in with the redirect flow, so the first token request on a
+// fresh page load can race the redirect response MsalProvider is still
+// processing. Wait for it to settle: once it has, the tokens are in the
+// cache and silent acquisition works.
+const msalReady = msalInstance
+	.initialize()
+	.then(() => msalInstance.handleRedirectPromise())
+	.catch(() => null);
+
+let redirectStarted = false;
+
 async function acquireToken(): Promise<string> {
+	await msalReady;
 	try {
 		const response = await msalInstance.acquireTokenSilent(loginRequest);
 		return response.accessToken;
 	} catch {
-		// Silent acquisition failed (new session, consent needed) — pop up
-		// the sign-in window so the user can complete the flow.
-		const response = await msalInstance.acquireTokenPopup(loginRequest);
-		return response.accessToken;
+		// No cached token — the session is fresh or expired. Send the whole
+		// tab through sign-in; on the way back MsalProvider completes it.
+		// The guard keeps a failing token from redirecting in a loop.
+		if (!redirectStarted) {
+			redirectStarted = true;
+			msalInstance.loginRedirect(loginRequest).catch(() => {});
+		}
+		throw new Error('Sign-in is starting — the page will reload when it finishes.');
 	}
 }
 

@@ -34,7 +34,9 @@ export function Nav() {
 				))}
 				<span className="ml-auto text-sm text-gray-500">{name}</span>
 				<button
-					onClick={() => instance.logoutPopup()}
+					onClick={() =>
+						instance.logoutRedirect({ postLogoutRedirectUri: 'http://localhost:3000' })
+					}
 					className="text-sm text-gray-500 hover:underline"
 				>
 					Sign out
