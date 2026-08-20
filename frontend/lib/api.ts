@@ -1,7 +1,9 @@
 // The one place the frontend talks to the API: acquires an access token
-// for the API scope (silent, falling back to a popup) and attaches it as
-// a bearer token. Every screen goes through this, so there is no route
-// that can accidentally call the API unauthenticated.
+// for the API scope (silent, falling back to a sign-in redirect) and
+// attaches it as a bearer token. Every screen goes through this, so there
+// is no route that can accidentally call the API unauthenticated.
+import { InteractionRequiredAuthError } from '@azure/msal-browser';
+
 import { msalInstance, loginRequest } from './msal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000';
@@ -31,15 +33,30 @@ async function acquireToken(): Promise<string> {
 	try {
 		const response = await msalInstance.acquireTokenSilent(loginRequest);
 		return response.accessToken;
-	} catch {
-		// No cached token — the session is fresh or expired. Send the whole
-		// tab through sign-in; on the way back MsalProvider completes it.
-		// The guard keeps a failing token from redirecting in a loop.
-		if (!redirectStarted) {
+	} catch (err) {
+		// Distinguish "the user needs to go sign in again" (interaction-
+		// required — the right response is a redirect) from a broken
+		// request (missing scope, consent misconfiguration — the right
+		// response is to surface the real error, not bounce in a loop).
+		const code =
+			typeof err === 'object' && err !== null && 'errorCode' in err
+				? (err as { errorCode: string }).errorCode
+				: undefined;
+		const needsInteraction =
+			err instanceof InteractionRequiredAuthError ||
+			code === 'interaction_required' ||
+			code === 'login_required' ||
+			code === 'consent_required' ||
+			code === 'no_account_in_silent_request';
+		if (needsInteraction && !redirectStarted) {
 			redirectStarted = true;
-			msalInstance.loginRedirect(loginRequest).catch(() => {});
+			msalInstance.loginRedirect(loginRequest).catch((redirectErr) => {
+				// Don't let a swallowed redirect hide the failure.
+				console.warn('loginRedirect failed:', redirectErr);
+			});
+			throw new Error('Sign-in is starting — the page will reload when it finishes.');
 		}
-		throw new Error('Sign-in is starting — the page will reload when it finishes.');
+		throw err instanceof Error ? err : new Error(String(err));
 	}
 }
 
