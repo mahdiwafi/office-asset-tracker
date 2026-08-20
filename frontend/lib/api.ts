@@ -28,10 +28,34 @@ const msalReady = msalInstance
 
 let redirectStarted = false;
 
+// Send the whole tab through sign-in. Guarded so a failing flow can't
+// redirect in a loop.
+function startRedirect() {
+	if (redirectStarted) return;
+	redirectStarted = true;
+	msalInstance.loginRedirect(loginRequest).catch((redirectErr) => {
+		// Don't let a swallowed redirect hide the failure.
+		console.warn('loginRedirect failed:', redirectErr);
+	});
+}
+
 async function acquireToken(): Promise<string> {
 	await msalReady;
+	// Silent acquisition needs an account bound to the request. The account
+	// is in the cache, but getActiveAccount() is often unset — fall back to
+	// the first cached account explicitly, and make it the active one so
+	// the rest of the app agrees on who is signed in.
+	const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0];
+	if (!account) {
+		startRedirect();
+		throw new Error('Sign-in is starting — the page will reload when it finishes.');
+	}
+	msalInstance.setActiveAccount(account);
 	try {
-		const response = await msalInstance.acquireTokenSilent(loginRequest);
+		const response = await msalInstance.acquireTokenSilent({
+			...loginRequest,
+			account,
+		});
 		return response.accessToken;
 	} catch (err) {
 		// Distinguish "the user needs to go sign in again" (interaction-
@@ -48,12 +72,8 @@ async function acquireToken(): Promise<string> {
 			code === 'login_required' ||
 			code === 'consent_required' ||
 			code === 'no_account_in_silent_request';
-		if (needsInteraction && !redirectStarted) {
-			redirectStarted = true;
-			msalInstance.loginRedirect(loginRequest).catch((redirectErr) => {
-				// Don't let a swallowed redirect hide the failure.
-				console.warn('loginRedirect failed:', redirectErr);
-			});
+		if (needsInteraction) {
+			startRedirect();
 			throw new Error('Sign-in is starting — the page will reload when it finishes.');
 		}
 		throw err instanceof Error ? err : new Error(String(err));
