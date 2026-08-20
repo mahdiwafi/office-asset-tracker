@@ -29,8 +29,16 @@ def _b64url_decode(part: str) -> bytes:
 	return base64.urlsafe_b64decode(part + '=' * (-len(part) % 4))
 
 
-def _issuer() -> str:
-	return f'https://login.microsoftonline.com/{settings.entra_tenant_id}/v2.0'
+def _issuers() -> set[str]:
+	# Entra signs access tokens with the v1-style sts.windows.net issuer and
+	# ID tokens with the v2.0-style login.microsoftonline.com issuer. Both
+	# belong to this tenant; accept either, plus the bare v1 form.
+	tid = settings.entra_tenant_id
+	return {
+		f'https://sts.windows.net/{tid}/',
+		f'https://login.microsoftonline.com/{tid}/v2.0',
+		f'https://login.microsoftonline.com/{tid}/',
+	}
 
 
 def _jwks_url() -> str:
@@ -121,7 +129,7 @@ async def verify_token(token: str) -> dict:
 		raise TokenInvalidError(
 			f'token audience {payload.get("aud")!r} does not match this app'
 		)
-	if payload.get('iss') != _issuer():
+	if payload.get('iss') not in _issuers():
 		raise TokenInvalidError(
 			f'token issuer {payload.get("iss")!r} does not match this tenant'
 		)

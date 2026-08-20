@@ -76,6 +76,15 @@ async def test_wrong_issuer_rejected() -> None:
 		await auth.verify_token(mint_token(payload))
 
 
+async def test_sts_windows_net_issuer_accepted() -> None:
+	# Real Entra access tokens are signed with the v1-style sts.windows.net
+	# issuer, not the login.microsoftonline.com form the ID token carries —
+	# both are this tenant and both must verify.
+	expected = f'https://sts.windows.net/{settings.entra_tenant_id}/'
+	claims = await auth.verify_token(mint_token(base_payload() | {'iss': expected}))
+	assert claims['iss'] == expected
+
+
 async def test_unknown_kid_rejected() -> None:
 	with pytest.raises(TokenInvalidError):
 		await auth.verify_token(mint_token(kid='not-in-the-jwks'))

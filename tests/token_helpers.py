@@ -38,7 +38,9 @@ def load_public_key() -> rsa.RSAPublicKey:
 
 
 def issuer() -> str:
-	# Mirrors the service's computation so tests agree with the code.
+	# One of the tenant's valid issuers (the login.microsoftonline.com
+	# form). Tests mint tokens with it; the service also accepts the
+	# sts.windows.net form that real access tokens carry.
 	return f'https://login.microsoftonline.com/{settings.entra_tenant_id}/v2.0'
 
 
