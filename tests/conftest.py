@@ -3,6 +3,7 @@ import contextlib
 import datetime
 
 import httpx
+import pytest
 import pytest_asyncio
 import sqlalchemy
 import sqlalchemy.ext.asyncio as saio
@@ -21,6 +22,13 @@ from app.models import (
 	LoanCondition,
 	User,
 	UserRole,
+)
+from app.services import auth
+from tests.token_helpers import (
+	OID,
+	base_payload,
+	jwks_response,
+	mint_token,
 )
 
 # Tests run one event loop per test; pooled connections would cross loops.
@@ -168,6 +176,44 @@ async def api_client():
 	await session.close()
 	await transaction.close()
 	await connection.close()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _entra_settings():
+	# CI has no .env, so the tenant/client ids are empty and the service's
+	# configuration guard fires before any test runs. Give the suite fake
+	# values; the token helpers derive iss/aud from the same settings, so
+	# both sides always agree. test_unconfigured_raises overrides them.
+	if not settings.entra_tenant_id:
+		settings.entra_tenant_id = '00000000-0000-0000-0000-000000000000'
+	if not settings.entra_client_id:
+		settings.entra_client_id = '11111111-1111-1111-1111-111111111111'
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def jwks(monkeypatch):
+	# Stub the network: serve the demo public key as the tenant's JWKS, so
+	# every verify_token call is deterministic and offline. The real JWKS
+	# fetch (httpx) is exercised by the live endpoint check instead.
+	async def _stub_jwks() -> dict:
+		return jwks_response()
+
+	auth._jwks_cache = None
+	monkeypatch.setattr(auth, '_fetch_jwks', _stub_jwks)
+	yield
+	auth._jwks_cache = None
+
+
+@pytest.fixture
+def bearer_headers():
+	# Authorization header for the API tests: a token minted with the demo
+	# key for the given Entra object id. The test either seeds the matching
+	# user (entra_oid=oid) or exercises first-login provisioning.
+	def _make(oid: str = OID, roles: list[str] | None = None) -> dict[str, str]:
+		payload = base_payload(oid=oid, roles=roles or ['Staff'])
+		return {'Authorization': f'Bearer {mint_token(payload)}'}
+
+	return _make
 
 
 @pytest_asyncio.fixture

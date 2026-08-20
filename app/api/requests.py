@@ -3,9 +3,9 @@
 import fastapi
 import sqlalchemy.orm as saorm
 
-from app.api.dependencies import get_actor_id
+from app.api.dependencies import get_current_user
 from app.db import get_db
-from app.models import Request, RequestStatus
+from app.models import Request, RequestStatus, User
 from app.schemas.common import Paginated
 from app.schemas.request import RequestCreate, RequestRead
 from app.services import requests as request_service
@@ -17,12 +17,12 @@ router: fastapi.APIRouter = fastapi.APIRouter(prefix='/requests', tags=['request
 async def create_request(
 	data: RequestCreate,
 	idempotency_key: str | None = fastapi.Header(default=None, alias='Idempotency-Key'),
-	actor_id: int = fastapi.Depends(get_actor_id),
+	current_user: User = fastapi.Depends(get_current_user),
 	session: saorm.Session = fastapi.Depends(get_db),
 	response: fastapi.Response = None,
 ) -> Request:
 	request, created = await request_service.create_request(
-		session, actor_id, data, idempotency_key
+		session, current_user.id, data, idempotency_key
 	)
 	if created:
 		await session.commit()
