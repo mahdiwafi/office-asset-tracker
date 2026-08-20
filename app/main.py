@@ -8,6 +8,7 @@ from app.api.audit import router as audit_router
 from app.api.health import router as health_router
 from app.api.loans import router as loans_router
 from app.api.requests import router as requests_router
+from app.api.users import router as users_router
 from app.core.config import settings
 
 app: fastapi.FastAPI = fastapi.FastAPI(title=settings.app_name)
@@ -29,3 +30,4 @@ app.include_router(loans_router)
 app.include_router(requests_router)
 app.include_router(approvals_router)
 app.include_router(audit_router)
+app.include_router(users_router)

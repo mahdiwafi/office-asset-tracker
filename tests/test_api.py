@@ -475,6 +475,7 @@ async def test_first_request_provisions_user_from_token(
 		('/loans',),
 		('/requests',),
 		('/audit',),
+		('/users/me',),
 	],
 )
 async def test_read_routes_require_token(api_client, path: str) -> None:
@@ -484,6 +485,20 @@ async def test_read_routes_require_token(api_client, path: str) -> None:
 	response = await client.get(path)
 	assert response.status_code == 401
 	assert 'missing bearer token' in response.json()['detail']
+
+
+async def test_me_returns_the_signed_in_user(api_client, bearer_headers) -> None:
+	client, session = api_client
+	oid = _next_oid()
+	await _seed_user(session, 'me@example.com', UserRole.approver, oid)
+	response = await client.get(
+		'/users/me', headers=bearer_headers(oid, roles=['Approver'])
+	)
+	assert response.status_code == 200
+	body = response.json()
+	assert body['email'] == 'me@example.com'
+	assert body['role'] == 'approver'
+	assert body['id'] > 0
 
 
 async def test_cors_preflight_allows_frontend_origin(api_client) -> None:
