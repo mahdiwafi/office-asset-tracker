@@ -33,3 +33,25 @@ jobs:
       - run: uv run pytest
         env:
           DATABASE_URL: postgresql+asyncpg://tracker:tracker@localhost:5432/tracker
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          # NEXT_PUBLIC_* values are baked into the client bundle at build
+          # time. They are not secrets — the SPA must hand them to every
+          # visitor so the API trusts the token, never the app.
+          NEXT_PUBLIC_ENTRA_CLIENT_ID: d4dded78-a81e-4585-adfb-243d86dd9f5d
+          NEXT_PUBLIC_ENTRA_TENANT_ID: 734dbdd2-0036-468e-a9fa-950c8c73db09
+          NEXT_PUBLIC_API_BASE: https://asset-tracker.example.com
