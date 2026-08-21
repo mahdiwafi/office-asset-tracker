@@ -1,0 +1,22 @@
+name: deploy
+
+# Manual trigger on purpose: the first deploy is the checkpoint — we press
+# the button together and debug whatever the first release breaks. Only
+# after it goes green do we wire it to merge-to-main (Day 5, final step).
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: asset-tracker-api
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_API }}
+          package: .
