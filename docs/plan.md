@@ -72,7 +72,7 @@ This is the highest-value day in the week. Do not compress it to catch up on som
 | Hours | Work |
 | --- | --- |
 | 3.5 | Next.js App Router, MSAL React login, six screens — asset list, asset detail, raise request, approval queue, my loans, audit log. Functional, restrained styling. Agent leads. |
-| 1.0 | App Service + Azure Database for PostgreSQL provisioned, budget alert set at $50 |
+| 1.0 | Azure Container Apps + Azure Database for PostgreSQL provisioned, budget alert set at $50 (hosting deviation — free trial blocks App Service, see ADR 0003) |
 | 2.0 | **[CP]** First deploy, and the failure it produces. Missing env var, unrun migration, TLS requirement — whatever it is, candidate debugs it rather than pasting the error in for a fix. |
 | 1.0 | GitHub Actions deploying on merge to `main`; Application Insights wired |
 | 0.5 | Scale to two instances, confirm nothing breaks |

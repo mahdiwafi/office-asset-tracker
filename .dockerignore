@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+frontend
+tests
+docs
+*.md
+.env
+.env.*
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+compose.yaml
+pyproject.toml
+uv.lock
