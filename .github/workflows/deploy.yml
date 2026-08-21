@@ -49,3 +49,43 @@ jobs:
           containerAppName: asset-tracker-api
           resourceGroup: asset-tracker-rg
           imageToDeploy: ghcr.io/${{ github.repository }}/asset-tracker-api:${{ github.sha }}
+
+  # Same pattern as deploy-api, but for the Next.js frontend. The image is
+  # built from ./frontend with the NEXT_PUBLIC_* values baked in — public
+  # by design for an SPA (the API trusts the token, never the app).
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            NEXT_PUBLIC_ENTRA_CLIENT_ID=d4dded78-a81e-4585-adfb-243d86dd9f5d
+            NEXT_PUBLIC_ENTRA_TENANT_ID=734dbdd2-0036-468e-a9fa-950c8c73db09
+            NEXT_PUBLIC_API_BASE=https://asset-tracker-api.bravedune-a10019ed.canadacentral.azurecontainerapps.io
+          tags: |
+            ghcr.io/${{ github.repository }}/asset-tracker-frontend:latest
+            ghcr.io/${{ github.repository }}/asset-tracker-frontend:${{ github.sha }}
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy image to Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          containerAppName: asset-tracker-frontend
+          resourceGroup: asset-tracker-rg
+          imageToDeploy: ghcr.io/${{ github.repository }}/asset-tracker-frontend:${{ github.sha }}

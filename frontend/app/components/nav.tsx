@@ -35,7 +35,7 @@ export function Nav() {
 				<span className="ml-auto text-sm text-gray-500">{name}</span>
 				<button
 					onClick={() =>
-						instance.logoutRedirect({ postLogoutRedirectUri: 'http://localhost:3000' })
+						instance.logoutRedirect({ postLogoutRedirectUri: window.location.origin })
 					}
 					className="text-sm text-gray-500 hover:underline"
 				>

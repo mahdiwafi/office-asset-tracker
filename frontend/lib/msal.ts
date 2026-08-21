@@ -7,11 +7,19 @@ import { PublicClientApplication, type Configuration } from '@azure/msal-browser
 const clientId = process.env.NEXT_PUBLIC_ENTRA_CLIENT_ID ?? '';
 const tenantId = process.env.NEXT_PUBLIC_ENTRA_TENANT_ID ?? '';
 
+// The redirect URI must be the origin the user is actually on: localhost
+// in development, the deployed URL in production. Baking one value would
+// break the other environment, so derive it at runtime and let an env
+// override win when one exists.
+const redirectUri =
+	process.env.NEXT_PUBLIC_REDIRECT_URI ??
+	(typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+
 export const msalConfig: Configuration = {
 	auth: {
 		clientId,
 		authority: `https://login.microsoftonline.com/${tenantId}`,
-		redirectUri: 'http://localhost:3000',
+		redirectUri,
 	},
 	cache: { cacheLocation: 'localStorage' },
 };
