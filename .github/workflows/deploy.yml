@@ -47,6 +47,5 @@ jobs:
         uses: azure/container-apps-deploy-action@v1
         with:
           containerAppName: asset-tracker-api
-          # TODO: the resource group that holds the Postgres server.
           resourceGroup: asset-tracker-rg
           imageToDeploy: ghcr.io/${{ github.repository }}/asset-tracker-api:${{ github.sha }}
