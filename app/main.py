@@ -10,6 +10,12 @@ from app.api.loans import router as loans_router
 from app.api.requests import router as requests_router
 from app.api.users import router as users_router
 from app.core.config import settings
+from app.core.telemetry import setup_telemetry
+
+# Must run before the FastAPI app exists so the auto-instrumentation
+# patches Starlette's class methods while the app is still being built.
+# No-op without APPLICATIONINSIGHTS_CONNECTION_STRING (see telemetry.py).
+setup_telemetry()
 
 app: fastapi.FastAPI = fastapi.FastAPI(title=settings.app_name)
 # The SPA (localhost:3000) calls this API from the browser: preflights and
