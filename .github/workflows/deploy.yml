@@ -1,8 +1,9 @@
 name: deploy
 
-# Manual trigger on purpose: the first deploy is the checkpoint — we press
-# the button together and debug whatever the first release breaks. Only
-# after it goes green do we wire it to merge-to-main (Day 5, final step).
+# The first deploy was manual on purpose (the [CP] checkpoint); now that
+# the pipeline has been proven end to end, every merge to main ships.
+# CI runs in parallel and gates the merge itself — deploy assumes main is
+# green, which is the state the branch protection enforces.
 #
 # Hosting: Azure Container Apps, not App Service (see docs/adr/0003).
 # The image is built in CI and pushed to the public GitHub Container
@@ -11,6 +12,8 @@ name: deploy
 # only swaps in the freshly built image.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
