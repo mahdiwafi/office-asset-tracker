@@ -74,8 +74,8 @@ This is the highest-value day in the week. Do not compress it to catch up on som
 | 3.5 | ✅ Next.js App Router, MSAL React login, six screens — asset list, asset detail, raise request, approval queue, my loans, audit log. Functional, restrained styling. Agent leads. |
 | 1.0 | ✅ Azure Container Apps + Azure Database for PostgreSQL provisioned, budget alert set at $50; frontend containerized and deployed (hosting deviation — free trial blocks App Service, see ADR 0003) |
 | 2.0 | ✅ **[CP]** First deploy, and the failures it produced: `btree_gist` allow-list on Azure Postgres; consumer-account sign-in wall in a fresh tenant; Web-vs-SPA platform mismatch (AADSTS9002326). Candidate debugged all three. |
-| 1.0 | GitHub Actions deploying on merge to `main`; Application Insights wired |
-| 0.5 | Scale to two instances, confirm nothing breaks |
+| 1.0 | ✅ GitHub Actions deploying on merge to `main`; Application Insights wired via env-gated OpenTelemetry — telemetry verified in portal queries |
+| 0.5 | ✅ Scale to two instances — concurrent boot is safe (Alembic advisory lock); telemetry proves both replicas serve traffic |
 
 **End state: a public URL — achieved.** The single highest-value artifact — nothing in the candidate's history currently proves they can operate a deployed system. The URL is live and login-gated; the assets list renders seeded rows from Postgres through an Entra-issued token.
 
