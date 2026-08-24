@@ -86,6 +86,10 @@ type ApiOptions = Omit<RequestInit, 'body'> & {
 	body?: unknown;
 };
 
+// The API speaks JSON whose shape varies by endpoint; every caller
+// narrows the fields it needs, so the wrapper's return type is
+// deliberately loose.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function api(path: string, options: ApiOptions = {}): Promise<any> {
 	const token = await acquireToken();
 	const response = await fetch(`${API_BASE}${path}`, {

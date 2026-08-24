@@ -2,7 +2,6 @@
 
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 
 const links = [
 	{ href: '/', label: 'Assets' },
@@ -10,16 +9,15 @@ const links = [
 	{ href: '/approvals', label: 'Approvals' },
 	{ href: '/loans', label: 'My loans' },
 	{ href: '/audit', label: 'Audit log' },
+	{ href: '/assistant', label: 'Ask ICT' },
 ];
 
 export function Nav() {
 	const isAuthenticated = useIsAuthenticated();
 	const { instance, accounts } = useMsal();
-	const [name, setName] = useState<string | null>(null);
-
-	useEffect(() => {
-		if (accounts[0]) setName(accounts[0].name ?? accounts[0].username);
-	}, [accounts]);
+	// Derived from hook state instead of an effect: accounts updates when
+	// the auth state changes, which re-renders this component anyway.
+	const name = accounts[0]?.name ?? accounts[0]?.username ?? null;
 
 	if (!isAuthenticated) return null;
 
