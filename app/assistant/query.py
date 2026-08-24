@@ -9,11 +9,16 @@
 # The free tier has no semantic ranker, so hybrid + top-k is our quality
 # ceiling and RRF keeps both signals honest.
 #
-# Generation is env-gated like telemetry: with ANTHROPIC_API_KEY set, the
+# Generation is env-gated like telemetry: with LLM_API_KEY set, the
 # answer is grounded on the retrieved excerpts; without it, the endpoint
-# returns citations only. Presence of the key IS the flag.
-import anthropic
+# returns citations only. Presence of the key IS the flag. The wire
+# format is OpenAI-compatible chat completions — spoken by DeepSeek (the
+# default provider; the plan's fallback clause allowed any hosted LLM),
+# OpenAI and Azure OpenAI alike — so the provider is a base URL and a
+# model name away (ADR 0004). Generation is best-effort: a failed model
+# call degrades to citations rather than a 500.
 import azure.search.documents.models
+import httpx
 
 from app.assistant.embeddings import embed_texts
 from app.assistant.search import _clients
@@ -22,6 +27,10 @@ from app.schemas.assistant import AssistantAnswer, Citation
 
 MAX_ANSWER_TOKENS = 600
 EXCERPT_CHARS = 200
+# Low temperature on purpose: this is a factual-answer surface, not a
+# creative one — we want the grounded text, not a flourish.
+GENERATION_TEMPERATURE = 0.2
+GENERATION_TIMEOUT_SECONDS = 30
 
 SYSTEM_PROMPT = (
 	'You are the ICT help-desk assistant for a small office. Answer staff '
@@ -78,32 +87,45 @@ def build_prompt(question: str, citations: list[Citation]) -> str:
 
 
 def _generate(question: str, citations: list[Citation]) -> str:
-	client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-	message = client.messages.create(
-		model=settings.assistant_model,
-		max_tokens=MAX_ANSWER_TOKENS,
-		system=SYSTEM_PROMPT,
-		messages=[{'role': 'user', 'content': build_prompt(question, citations)}],
+	"""OpenAI-compatible chat completions against the configured provider."""
+	response = httpx.post(
+		f'{settings.llm_base_url}/chat/completions',
+		headers={'Authorization': f'Bearer {settings.llm_api_key}'},
+		json={
+			'model': settings.llm_model,
+			'messages': [
+				{'role': 'system', 'content': SYSTEM_PROMPT},
+				{'role': 'user', 'content': build_prompt(question, citations)},
+			],
+			'max_tokens': MAX_ANSWER_TOKENS,
+			'temperature': GENERATION_TEMPERATURE,
+		},
+		timeout=GENERATION_TIMEOUT_SECONDS,
 	)
-	return ''.join(
-		block.text for block in message.content if getattr(block, 'text', None)
-	)
+	response.raise_for_status()
+	return response.json()['choices'][0]['message']['content']
 
 
 def answer_question(question: str, *, top_k: int = 5) -> AssistantAnswer:
 	"""Retrieve, cite, then (if configured) generate a grounded answer."""
 	results = hybrid_search(question, top_k=top_k)
 	citations = build_citations(results)
-	if not citations or not settings.anthropic_api_key:
+	if not citations or not settings.llm_api_key:
 		# No grounding material or no model: citations-only answer. The
 		# client shows the evidence either way.
 		return AssistantAnswer(
 			answer=None,
-			generation_configured=bool(settings.anthropic_api_key),
+			generation_configured=bool(settings.llm_api_key),
 			citations=citations,
 		)
+	# Generation is best-effort: a dead model call (wrong key, provider
+	# outage) must not take the retrieved evidence down with it.
+	try:
+		answer = _generate(question, citations)
+	except Exception:
+		answer = None
 	return AssistantAnswer(
-		answer=_generate(question, citations),
+		answer=answer,
 		generation_configured=True,
 		citations=citations,
 	)

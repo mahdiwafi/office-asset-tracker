@@ -1,8 +1,9 @@
 # The query path: hybrid retrieval, citation building, and env-gated
-# generation. The Azure SDK and the Anthropic SDK are both faked at our
-# boundary — the tests prove our wiring, not the vendors'.
-
-import anthropic
+# generation. The Azure SDK and the LLM HTTP call are both faked at our
+# boundary — the tests prove our wiring, not the providers'. The
+# generation fake pins the exact request shape (URL, auth header, JSON
+# body) so a provider mismatch can never be invisible again — that is
+# the 500 that cost an hour of live debugging on Day 6.
 
 from app.assistant import AssistantNotConfigured, query
 from app.core.config import settings
@@ -44,6 +45,35 @@ def _fake_embed(texts: list[str]) -> list[list[float]]:
 	return [[0.5] * 384 for _ in texts]
 
 
+class FakeResponse:
+	def __init__(self, payload: dict) -> None:
+		self._payload = payload
+
+	def raise_for_status(self) -> None:
+		return None
+
+	def json(self) -> dict:
+		return self._payload
+
+
+class FakePost:
+	"""Stand-in for httpx.post: records every call and returns a scripted
+	response or raises."""
+
+	def __init__(
+		self, payload: dict | None = None, error: Exception | None = None
+	) -> None:
+		self.payload = payload
+		self.error = error
+		self.calls: list[dict] = []
+
+	def __call__(self, url: str, **kwargs) -> FakeResponse:
+		self.calls.append({'url': url, **kwargs})
+		if self.error:
+			raise self.error
+		return FakeResponse(self.payload)
+
+
 def test_hybrid_search_sends_text_vector_and_top_k(monkeypatch):
 	fake = FakeSearchClient([_result()])
 	monkeypatch.setattr(query, '_clients', lambda: _fake_clients(fake))
@@ -63,7 +93,7 @@ def test_hybrid_search_sends_text_vector_and_top_k(monkeypatch):
 
 
 def test_answer_question_returns_citations_without_api_key(monkeypatch):
-	monkeypatch.setattr(settings, 'anthropic_api_key', '')
+	monkeypatch.setattr(settings, 'llm_api_key', '')
 	monkeypatch.setattr(
 		query,
 		'hybrid_search',
@@ -83,60 +113,67 @@ def test_answer_question_returns_citations_without_api_key(monkeypatch):
 
 
 def test_answer_question_generates_when_configured(monkeypatch):
-	monkeypatch.setattr(settings, 'anthropic_api_key', 'sk-test')
+	monkeypatch.setattr(settings, 'llm_api_key', 'sk-test')
+	monkeypatch.setattr(settings, 'llm_base_url', 'https://api.deepseek.com')
+	monkeypatch.setattr(settings, 'llm_model', 'deepseek-chat')
 	monkeypatch.setattr(
 		query,
 		'hybrid_search',
 		lambda q, top_k: [_result(content='The standard loan period is 14 days.')],
 	)
-	calls: list[dict] = []
-
-	class FakeAnthropic:
-		def __init__(self, **kwargs) -> None:
-			self.kwargs = kwargs
-
-		@property
-		def messages(self):
-			return self
-
-		def create(self, **kwargs):
-			calls.append(kwargs)
-			return type(
-				'Message',
-				(),
-				{
-					'content': [
-						type('TextBlock', (), {'text': 'You can keep it for 14 days.'})
-					]
-				},
-			)
-
-	monkeypatch.setattr(anthropic, 'Anthropic', FakeAnthropic)
+	fake = FakePost(
+		payload={'choices': [{'message': {'content': 'You can keep it for 14 days.'}}]}
+	)
+	monkeypatch.setattr(query.httpx, 'post', fake)
 	answer = query.answer_question(QUESTION)
 	assert answer.answer == 'You can keep it for 14 days.'
 	assert answer.generation_configured is True
-	assert len(calls) == 1
-	create = calls[0]
-	assert create['model'] == settings.assistant_model
-	assert create['max_tokens'] == query.MAX_ANSWER_TOKENS
+	assert len(fake.calls) == 1
+	call = fake.calls[0]
+	# The wire contract, pinned: OpenAI-compatible chat completions
+	# against the configured provider.
+	assert call['url'] == 'https://api.deepseek.com/chat/completions'
+	assert call['headers']['Authorization'] == 'Bearer sk-test'
+	body = call['json']
+	assert body['model'] == 'deepseek-chat'
+	assert body['max_tokens'] == query.MAX_ANSWER_TOKENS
+	assert body['temperature'] == query.GENERATION_TEMPERATURE
+	assert body['messages'][0]['role'] == 'system'
+	assert 'cite' in body['messages'][0]['content'].lower()
 	# Grounding: the chunk excerpt and the question must both reach the
-	# model, and the system prompt must demand citations.
-	prompt = create['messages'][0]['content']
+	# model, numbered as [1] so the answer can cite its sources.
+	prompt = body['messages'][1]['content']
 	assert 'The standard loan period is 14 days.' in prompt
 	assert QUESTION in prompt
 	assert '[1]' in prompt
-	assert 'cite' in create['system'].lower()
+
+
+def test_generation_failure_degrades_to_citations(monkeypatch):
+	monkeypatch.setattr(settings, 'llm_api_key', 'sk-test')
+	monkeypatch.setattr(
+		query,
+		'hybrid_search',
+		lambda q, top_k: [_result(content='The standard loan period is 14 days.')],
+	)
+	monkeypatch.setattr(
+		query.httpx, 'post', FakePost(error=RuntimeError('provider rejected the key'))
+	)
+	answer = query.answer_question(QUESTION)
+	assert answer.answer is None, 'a dead model call must not 500 the endpoint'
+	assert answer.generation_configured is True
+	# The evidence survives a dead model call.
+	assert len(answer.citations) == 1
+	assert answer.citations[0].article_slug == 'loan-periods'
 
 
 def test_answer_question_skips_generation_with_no_results(monkeypatch):
-	monkeypatch.setattr(settings, 'anthropic_api_key', 'sk-test')
+	monkeypatch.setattr(settings, 'llm_api_key', 'sk-test')
 	monkeypatch.setattr(query, 'hybrid_search', lambda q, top_k: [])
 
-	class Explosive:
-		def __init__(self, **kwargs) -> None:
-			raise AssertionError('generation must not run with zero citations')
+	def explosive(*args, **kwargs):
+		raise AssertionError('generation must not run with zero citations')
 
-	monkeypatch.setattr(anthropic, 'Anthropic', Explosive)
+	monkeypatch.setattr(query.httpx, 'post', explosive)
 	answer = query.answer_question(QUESTION)
 	assert answer.answer is None
 	assert answer.citations == []
