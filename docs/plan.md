@@ -91,7 +91,7 @@ This is the highest-value day in the week. Do not compress it to catch up on som
 | 2.0 | ✅ Upload → chunk → embed → index pipeline (`app/assistant/{chunking,embeddings,search,ingest}.py`), CLI `uv run python -m app.assistant.ingest`, idempotent (index-as-code, upsert by id), every SDK call mocked in tests. |
 | 1.5 | ✅ Hybrid query (BM25 + vector, RRF-merged) with top-k=5, citations built from every response (article, chunk, excerpt, score), grounded generation env-gated on `ANTHROPIC_API_KEY` — absent → citations-only, app still works. 25 new tests, all hermetic. |
 
-**End state:** working retrieval and generation, tested with mocks — **code complete; live verification pending the candidate's portal work (create AI Search, add keys, run ingest in the container console, query with a token from the Network tab).**
+**End state:** working retrieval and generation, tested with mocks — **achieved and verified live (2026-08-24):** AI Search Free provisioned, 11 chunks ingested from the container console, `POST /assistant/query` returns a grounded DeepSeek answer with 5 citations in ~7s. The first live query 500'd (Anthropic slot held a DeepSeek key — keys are provider-scoped); fixed by the provider-neutral adapter and verified. Finding carried to Day 7: 200-char excerpts truncate mid-word and the model had to refuse part of the answer — excerpt length and word-bounding belong with the cited-sources UI.
 
 **Concepts:** embeddings as semantic coordinates; why hybrid beats pure vector on short factual queries; why the Free tier's missing semantic ranker matters.
 
