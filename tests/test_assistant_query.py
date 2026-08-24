@@ -102,6 +102,9 @@ def test_answer_question_returns_citations_without_api_key(monkeypatch):
 	answer = query.answer_question(QUESTION)
 	assert answer.answer is None, 'no key → no generation, but retrieval still works'
 	assert answer.generation_configured is False
+	assert answer.refused is False, (
+		'no key is not a refusal; the floor only gates generation'
+	)
 	assert len(answer.citations) == 2
 	first = answer.citations[0]
 	assert first.article_title == 'Loan periods and renewals'
@@ -128,6 +131,7 @@ def test_answer_question_generates_when_configured(monkeypatch):
 	answer = query.answer_question(QUESTION)
 	assert answer.answer == 'You can keep it for 14 days.'
 	assert answer.generation_configured is True
+	assert answer.refused is False
 	assert len(fake.calls) == 1
 	call = fake.calls[0]
 	# The wire contract, pinned: OpenAI-compatible chat completions
@@ -146,6 +150,25 @@ def test_answer_question_generates_when_configured(monkeypatch):
 	assert 'The standard loan period is 14 days.' in prompt
 	assert QUESTION in prompt
 	assert '[1]' in prompt
+
+
+def test_below_floor_score_refuses_without_calling_the_model(monkeypatch):
+	monkeypatch.setattr(settings, 'llm_api_key', 'sk-test')
+	monkeypatch.setattr(
+		query, 'hybrid_search', lambda q, top_k: [_result(score=0.0157)]
+	)
+
+	def explosive(*args, **kwargs):
+		raise AssertionError('the model must not be called below the floor')
+
+	monkeypatch.setattr(query.httpx, 'post', explosive)
+	answer = query.answer_question(QUESTION)
+	assert answer.answer is None
+	assert answer.refused is True
+	assert answer.generation_configured is True
+	# The weak evidence still comes back — the client can show why.
+	assert len(answer.citations) == 1
+	assert answer.citations[0].score == 0.0157
 
 
 def test_generation_failure_degrades_to_citations(monkeypatch):

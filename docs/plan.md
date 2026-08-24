@@ -99,7 +99,7 @@ This is the highest-value day in the week. Do not compress it to catch up on som
 
 | Hours | Work |
 | --- | --- |
-| 1.5 | **[CP]** Score threshold and refusal. An assistant that answers from nothing is worse than none. Candidate sets the threshold and justifies it against real queries. |
+| 1.5 | ✅ **[CP]** Score threshold and refusal — candidate chose **floor 0.020 + model referee**, justified against a 16-query live score battery (2026-08-24): every real-word query scored ≥0.0315, pure nonsense 0.0167, and RRF scores proved uncalibrated ("capital of France" 0.0328 — a score-only threshold is dead on arrival). Below the floor: deterministic refusal, no model call. Above it: the model refuses semantic mismatches via the system prompt. Response gains `refused: true`; weak evidence still returned. 103 tests. |
 | 1.5 | Cited-sources UI — show which chunks were retrieved, with scores, linked to source articles. The differentiating detail; most junior RAG projects are black boxes. |
 | 1.0 | Ten-pair golden set, evaluated manually. ADR noting that probabilistic behaviour cannot be unit-tested. |
 | 1.5 | README — problem, architecture diagram, live URL, screenshots, testing approach, what changes at scale |

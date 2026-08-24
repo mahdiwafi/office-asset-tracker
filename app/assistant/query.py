@@ -31,6 +31,15 @@ EXCERPT_CHARS = 200
 # creative one — we want the grounded text, not a flourish.
 GENERATION_TEMPERATURE = 0.2
 GENERATION_TIMEOUT_SECONDS = 30
+# Refusal floor — the Day 7 [CP] decision, from the live score battery
+# (2026-08-24): every real-word query scored >= 0.0315 while pure
+# nonsense (zzzzqqqq) scored 0.0167, so 0.020 sits in a clean gap.
+# Below it we refuse deterministically without spending a model call;
+# above it the model itself is the referee for semantic mismatch —
+# "capital of France" scores ~0.033 (RRF scores are rank-based, not
+# calibrated) and only the system prompt's refusal instruction can
+# catch it.
+REFUSAL_SCORE_FLOOR = 0.020
 
 SYSTEM_PROMPT = (
 	'You are the ICT help-desk assistant for a small office. Answer staff '
@@ -117,6 +126,14 @@ def answer_question(question: str, *, top_k: int = 5) -> AssistantAnswer:
 			answer=None,
 			generation_configured=bool(settings.llm_api_key),
 			citations=citations,
+		)
+	if max(citation.score for citation in citations) < REFUSAL_SCORE_FLOOR:
+		# Lexical garbage: nothing above the floor, so nothing to answer
+		# from. Refuse without calling the model — the floor is a cheap,
+		# deterministic decision, and the model stays the referee for the
+		# semantic gap above it.
+		return AssistantAnswer(
+			answer=None, generation_configured=True, refused=True, citations=citations
 		)
 	# Generation is best-effort: a dead model call (wrong key, provider
 	# outage) must not take the retrieved evidence down with it.
