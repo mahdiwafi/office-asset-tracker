@@ -15,6 +15,19 @@ class Settings(pydantic_settings.BaseSettings):
 	entra_api_uri: str = ''
 	# Origins allowed to call the API from the browser (the SPA dev server).
 	cors_origins: list[str] = ['http://localhost:3000']
+	# --- Assistant (Day 6) ---
+	# Empty by default: the assistant route 503s until the container app
+	# provides a search service. Generation is additionally gated on the
+	# presence of the Anthropic API key (see app/assistant/query.py) —
+	# presence of the secret IS the flag, same pattern as telemetry.
+	ai_search_endpoint: str = ''
+	ai_search_key: str = ''
+	ai_search_index: str = 'help-docs'
+	anthropic_api_key: str = ''
+	assistant_model: str = 'claude-sonnet-5'
+	embedding_model: str = 'BAAI/bge-small-en-v1.5'
+	# Empty → fastembed's default cache (~/.cache/fastembed).
+	embedding_cache_dir: str = ''
 
 	@property
 	def api_audience(self) -> str:

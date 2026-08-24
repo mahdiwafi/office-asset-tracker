@@ -85,13 +85,13 @@ This is the highest-value day in the week. Do not compress it to catch up on som
 
 | Hours | Work |
 | --- | --- |
-| 2.0 | Write six help/policy articles by hand — loan periods, damage process, offboarding returns, how to request. Real writing for a non-technical reader. |
-| 1.0 | Azure AI Search Free tier index, generation model deployment, availability verified |
-| 1.5 | **[CP]** Chunking. Candidate picks size and overlap and explains the trade-off before implementing. |
-| 2.0 | Upload → chunk → embed → index pipeline, with SDK calls mocked in tests |
-| 1.5 | Hybrid query, top-k retrieval, grounded generation |
+| 2.0 | ✅ Six help articles written for non-technical readers — `docs/help/`: requesting equipment, loan periods & renewals, damage & loss, offboarding returns, eligibility & priority, asset care. 2,673 words. |
+| 1.0 | ✅ Availability verified by search: **Azure OpenAI is quota-blocked on free trials (0 TPM — same wall as App Service, ADR 0003 family)**; AI Search Free tier confirmed (50 MB, 3 indexes, vector ≤4096 dims, hybrid RRF, no semantic ranker). Generation = Claude API (Anthropic SDK, `claude-sonnet-5`), env-gated. See ADR 0004. Portal work pending: create the search service + add keys to the container app. |
+| 1.5 | ✅ **[CP]** Chunking — candidate picked **≈400 tokens / 10% overlap** (2026-08-24) and justified against the trade-off table: paragraph-sized chunks fit one answer, 1–3 chunks/article; 10% overlap insures boundary-straddling questions at negligible cost. Sentence-complete invariants enforced. |
+| 2.0 | ✅ Upload → chunk → embed → index pipeline (`app/assistant/{chunking,embeddings,search,ingest}.py`), CLI `uv run python -m app.assistant.ingest`, idempotent (index-as-code, upsert by id), every SDK call mocked in tests. |
+| 1.5 | ✅ Hybrid query (BM25 + vector, RRF-merged) with top-k=5, citations built from every response (article, chunk, excerpt, score), grounded generation env-gated on `ANTHROPIC_API_KEY` — absent → citations-only, app still works. 25 new tests, all hermetic. |
 
-**End state:** working retrieval and generation, tested with mocks.
+**End state:** working retrieval and generation, tested with mocks — **code complete; live verification pending the candidate's portal work (create AI Search, add keys, run ingest in the container console, query with a token from the Network tab).**
 
 **Concepts:** embeddings as semantic coordinates; why hybrid beats pure vector on short factual queries; why the Free tier's missing semantic ranker matters.
 

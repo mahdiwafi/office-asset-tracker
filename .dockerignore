@@ -3,8 +3,13 @@
 .venv
 frontend
 tests
-docs
+docs/*
 *.md
+# docs/help is the assistant's corpus — it must reach the image (the
+# ingest CLI runs inside the container). Negations must come after the
+# patterns they override.
+!docs/help
+!docs/help/*.md
 .env
 .env.*
 __pycache__

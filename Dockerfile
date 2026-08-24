@@ -18,10 +18,19 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Bake the embedding model into the image: without this, the first
+# /assistant/query after a deploy pays a ~100 MB model download from
+# Hugging Face. The name must match EMBEDDING_MODEL (the default in
+# app/core/config.py), and the download lands in ~/.cache/fastembed —
+# which is also the runtime default cache_dir, so queries find the
+# baked model with zero configuration.
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5')"
+
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini .
 COPY scripts ./scripts
+COPY docs/help ./docs/help
 
 # Migrations (and the idempotent demo seed) run at container boot, not
 # build: the image is built in CI where the database is unreachable.
