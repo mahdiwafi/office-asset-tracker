@@ -26,6 +26,8 @@ from app.core.config import settings
 from app.schemas.assistant import AssistantAnswer, Citation
 
 MAX_ANSWER_TOKENS = 600
+# Upper bound for the display excerpt; _excerpt additionally bounds it to
+# a word so a chunk is never cut mid-word in the UI.
 EXCERPT_CHARS = 200
 # Low temperature on purpose: this is a factual-answer surface, not a
 # creative one — we want the grounded text, not a flourish.
@@ -73,29 +75,50 @@ def hybrid_search(question: str, *, top_k: int = 5) -> list[dict]:
 	return list(results)
 
 
+def _excerpt(content: str, max_chars: int = EXCERPT_CHARS) -> str:
+	"""Word-bounded display excerpt. The Day 6 finding: a raw character
+	cut truncates mid-word ("The standard loan period is 14 d"), and the
+	model had to guess "days" and refuse the rest. The generation prompt
+	gets the full chunk (build_prompt) — this only shapes what the UI
+	shows, and it must never cut inside a word, silently or not."""
+	if len(content) <= max_chars:
+		return content
+	window = content[:max_chars]
+	break_at = window.rfind(' ')
+	if break_at == -1:
+		# No space in the window (a long URL or code): a hard cut beats
+		# returning untruncated text.
+		return window + '…'
+	return window[:break_at] + '…'
+
+
 def build_citations(results: list[dict]) -> list[Citation]:
 	return [
 		Citation(
 			article_title=result['title'],
 			article_slug=result['article'],
 			chunk_index=result['chunk_index'],
-			excerpt=result['content'][:EXCERPT_CHARS],
+			excerpt=_excerpt(result['content']),
 			score=result['@search.score'],
 		)
 		for result in results
 	]
 
 
-def build_prompt(question: str, citations: list[Citation]) -> str:
+def build_prompt(question: str, results: list[dict]) -> str:
+	"""Number the retrieved chunks [1]..[n] for the model. The evidence
+	artifact: the FULL chunk content, not the display excerpt — the model
+	must never have to guess at text the UI cut for display (the Day 6
+	finding). Numbering matches build_citations, so the answer's [n]
+	references line up with the client's source list."""
 	excerpts = '\n\n'.join(
-		f'[{index + 1}] ({citation.article_title}, {citation.article_slug}):\n'
-		f'{citation.excerpt}'
-		for index, citation in enumerate(citations)
+		f'[{index + 1}] ({result["title"]}, {result["article"]}):\n{result["content"]}'
+		for index, result in enumerate(results)
 	)
 	return f'Excerpts:\n{excerpts}\n\nQuestion: {question}'
 
 
-def _generate(question: str, citations: list[Citation]) -> str:
+def _generate(question: str, results: list[dict]) -> str:
 	"""OpenAI-compatible chat completions against the configured provider."""
 	response = httpx.post(
 		f'{settings.llm_base_url}/chat/completions',
@@ -104,7 +127,7 @@ def _generate(question: str, citations: list[Citation]) -> str:
 			'model': settings.llm_model,
 			'messages': [
 				{'role': 'system', 'content': SYSTEM_PROMPT},
-				{'role': 'user', 'content': build_prompt(question, citations)},
+				{'role': 'user', 'content': build_prompt(question, results)},
 			],
 			'max_tokens': MAX_ANSWER_TOKENS,
 			'temperature': GENERATION_TEMPERATURE,
@@ -138,7 +161,7 @@ def answer_question(question: str, *, top_k: int = 5) -> AssistantAnswer:
 	# Generation is best-effort: a dead model call (wrong key, provider
 	# outage) must not take the retrieved evidence down with it.
 	try:
-		answer = _generate(question, citations)
+		answer = _generate(question, results)
 	except Exception:
 		answer = None
 	return AssistantAnswer(

@@ -111,8 +111,9 @@ def test_answer_question_returns_citations_without_api_key(monkeypatch):
 	assert first.article_slug == 'loan-periods'
 	assert first.chunk_index == 0
 	assert first.score == 0.031
-	# Excerpt is a truncated window of the chunk, not the whole chunk.
-	assert answer.citations[1].excerpt == 'x' * 200
+	# Excerpt is a word-bounded window of the chunk, not the whole chunk —
+	# and truncation is signalled, never silent.
+	assert answer.citations[1].excerpt == 'x' * 200 + '…'
 
 
 def test_answer_question_generates_when_configured(monkeypatch):
@@ -144,7 +145,7 @@ def test_answer_question_generates_when_configured(monkeypatch):
 	assert body['temperature'] == query.GENERATION_TEMPERATURE
 	assert body['messages'][0]['role'] == 'system'
 	assert 'cite' in body['messages'][0]['content'].lower()
-	# Grounding: the chunk excerpt and the question must both reach the
+	# Grounding: the chunk content and the question must both reach the
 	# model, numbered as [1] so the answer can cite its sources.
 	prompt = body['messages'][1]['content']
 	assert 'The standard loan period is 14 days.' in prompt
@@ -217,12 +218,37 @@ def test_build_citations_uses_search_score_and_full_fields():
 	]
 
 
-def test_build_prompt_numbers_excerpts():
-	citations = query.build_citations([_result(), _result('asset-care', 1)])
-	prompt = query.build_prompt(QUESTION, citations)
+def test_build_prompt_numbers_chunks():
+	prompt = query.build_prompt(QUESTION, [_result(), _result('asset-care', 1)])
 	assert '[1]' in prompt and 'Loan periods and renewals' in prompt
 	assert '[2]' in prompt and 'asset-care' in prompt
 	assert QUESTION in prompt
+
+
+def test_build_prompt_uses_full_content_not_display_excerpt():
+	# The Day 6 finding, pinned: the model gets the whole chunk even
+	# though the UI excerpt is truncated — evidence is never cut for
+	# display.
+	long = 'The standard loan period is 14 days. ' + 'x' * 500
+	results = [_result(content=long)]
+	citations = query.build_citations(results)
+	assert citations[0].excerpt.endswith('…')
+	prompt = query.build_prompt(QUESTION, results)
+	assert long in prompt
+
+
+def test_excerpt_truncates_at_word_boundary():
+	# A raw 200-char cut would land inside "boundary"; the display excerpt
+	# instead ends at a word boundary and says it is truncated. Short
+	# content passes through whole, and a window with no space at all (a
+	# long URL or code) falls back to a hard cut rather than overflowing.
+	content = 'x' * 150 + ' boundary' + 'y' * 100
+	assert query._excerpt(content) == 'x' * 150 + '…'
+	assert (
+		query._excerpt('The standard loan period is 14 days.')
+		== 'The standard loan period is 14 days.'
+	)
+	assert query._excerpt('x' * 300) == 'x' * 200 + '…'
 
 
 def test_clients_raise_clearly_when_unconfigured(monkeypatch):
