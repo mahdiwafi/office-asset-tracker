@@ -4,7 +4,15 @@ import sqlalchemy
 import sqlalchemy.orm as saorm
 from sqlalchemy.orm import selectinload
 
-from app.models import Asset, AssetStatus, Loan, LoanCondition, Request, User
+from app.models import (
+	Asset,
+	AssetCondition,
+	AssetStatus,
+	Loan,
+	LoanCondition,
+	Request,
+	User,
+)
 from app.models.approval import Approval, ApprovalDecision
 from app.models.user import UserRole
 from app.schemas.loan import LoanCreate
@@ -230,6 +238,10 @@ async def decide_return(
 			if condition_in is LoanCondition.poor
 			else AssetStatus.available
 		)
+		# The return decision is the inspection: the approver's grade
+		# becomes the asset's recorded condition, so status and condition
+		# never contradict (damaged while still "good").
+		asset.condition = AssetCondition(condition_in.value)
 	await record(
 		session,
 		actor_id=approver_id,

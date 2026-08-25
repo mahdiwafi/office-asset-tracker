@@ -7,6 +7,7 @@ import sqlalchemy
 
 from app.models import (
 	Asset,
+	AssetCondition,
 	AssetStatus,
 	AuditEvent,
 	Category,
@@ -233,6 +234,7 @@ async def test_return_is_requested_by_the_borrower_and_decided_by_an_approver(
 	assert loan.return_requested_at is None
 	asset = await session.get(Asset, asset_id)
 	assert asset.status is AssetStatus.available
+	assert asset.condition is AssetCondition.good
 
 
 async def test_return_decision_without_a_condition_returns_400(

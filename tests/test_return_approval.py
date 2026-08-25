@@ -9,7 +9,7 @@
 
 import pytest
 
-from app.models import Asset, AssetStatus, Loan, LoanCondition, UserRole
+from app.models import Asset, AssetCondition, AssetStatus, Loan, LoanCondition, UserRole
 from app.models.approval import ApprovalDecision
 from app.services.errors import (
 	LoanAlreadyReturnedError,
@@ -102,6 +102,9 @@ async def test_approver_approving_a_return_closes_the_loan(
 	assert loan.return_requested_at is None
 	asset = await db_session.get(Asset, asset.id)
 	assert asset.status is AssetStatus.available
+	# The return decision is the inspection: the recorded grade becomes
+	# the asset's condition, so status and condition cannot contradict.
+	assert asset.condition is AssetCondition.good
 
 
 async def test_approving_a_return_with_damaged_condition_flags_the_asset(
@@ -117,6 +120,9 @@ async def test_approving_a_return_with_damaged_condition_flags_the_asset(
 	)
 	asset = await db_session.get(Asset, asset.id)
 	assert asset.status is AssetStatus.damaged
+	# The poor grade lands on the asset itself: damaged status, poor
+	# condition — never damaged while still "good".
+	assert asset.condition is AssetCondition.poor
 
 
 async def test_approval_requires_the_returned_condition(

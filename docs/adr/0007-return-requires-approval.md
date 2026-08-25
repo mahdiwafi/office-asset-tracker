@@ -46,7 +46,9 @@ The return flow mirrors the request flow, in two steps:
      `ReturnConditionMissingError` the old flow used). The loan closes
      (`returned_at`, `condition_in`), the pending marker clears, and the
      asset comes back to the pool — *good*/*fair* → `available`, *poor* →
-     `damaged` (flagged for repair).
+     `damaged` (flagged for repair). The decision is the inspection: the
+     grade also becomes the asset's recorded `condition`, so the catalog
+     can never show a *damaged* asset still rated *good*.
    - **declined** cancels the pending request (`return_requested_at`
      cleared) and leaves the loan fully active. The approver grades
      nothing on a decline, so no condition is required.
