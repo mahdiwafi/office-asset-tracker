@@ -23,6 +23,12 @@ type RaisedRequest = {
 	created_at: string;
 };
 
+function isoDaysFromNow(days: number): string {
+	const date = new Date();
+	date.setDate(date.getDate() + days);
+	return date.toLocaleDateString('en-CA');
+}
+
 const INPUT_CLASSES =
 	'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20';
 
@@ -30,6 +36,11 @@ export default function RaiseRequestPage() {
 	const [assets, setAssets] = useState<Asset[] | null>(null);
 	const [assetId, setAssetId] = useState('');
 	const [justification, setJustification] = useState('');
+	// Pre-filled with the standard two-week window so an approval always
+	// has a period to issue the loan from; both are editable, and clearing
+	// one clears the rule (see handleSubmit).
+	const [startDate, setStartDate] = useState(() => isoDaysFromNow(0));
+	const [dueDate, setDueDate] = useState(() => isoDaysFromNow(14));
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [created, setCreated] = useState<RaisedRequest | null>(null);
@@ -45,12 +56,37 @@ export default function RaiseRequestPage() {
 
 	async function handleSubmit(e: FormEvent) {
 		e.preventDefault();
+		// Dates go together: a request with only one end of the period is a
+		// mistake, and approval issues the loan from the pair. ISO date
+		// strings compare lexicographically, so no date library is needed.
+		if ((startDate && !dueDate) || (!startDate && dueDate)) {
+			setError('Start and due dates go together — pick both or leave both empty.');
+			return;
+		}
+		if (startDate && dueDate) {
+			if (dueDate <= startDate) {
+				setError('The due date must be after the start date.');
+				return;
+			}
+			if ((Date.parse(dueDate) - Date.parse(startDate)) / 86400000 > 30) {
+				setError('Loan periods are capped at 30 days.');
+				return;
+			}
+		}
 		setSubmitting(true);
 		setError(null);
 		try {
 			const body = await api('/requests', {
 				method: 'POST',
-				body: { asset_id: Number(assetId), justification },
+				body: {
+					asset_id: Number(assetId),
+					justification,
+					// Both or neither (enforced above); an empty pair stays a
+					// consent-only request.
+					...(startDate && dueDate
+						? { start_date: startDate, due_date: dueDate }
+						: {}),
+				},
 			});
 			setCreated(body);
 			setJustification('');
@@ -119,6 +155,44 @@ export default function RaiseRequestPage() {
 									className={INPUT_CLASSES}
 								/>
 							</div>
+							<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+								<div>
+									<label
+										htmlFor="start-date"
+										className="mb-1 block text-sm font-medium text-gray-700"
+									>
+										Start date
+									</label>
+									<input
+										id="start-date"
+										type="date"
+										value={startDate}
+										min={isoDaysFromNow(0)}
+										onChange={(e) => setStartDate(e.target.value)}
+										className={INPUT_CLASSES}
+									/>
+								</div>
+								<div>
+									<label
+										htmlFor="due-date"
+										className="mb-1 block text-sm font-medium text-gray-700"
+									>
+										Due date
+									</label>
+									<input
+										id="due-date"
+										type="date"
+										value={dueDate}
+										min={startDate}
+										onChange={(e) => setDueDate(e.target.value)}
+										className={INPUT_CLASSES}
+									/>
+								</div>
+							</div>
+							<p className="text-xs text-gray-500">
+								Optional — but an approval issues the loan for exactly this period
+								(capped at 30 days), so fill both when you know the dates.
+							</p>
 							<Button type="submit" busy={submitting}>
 								<Plus className="h-4 w-4" />
 								Submit request
