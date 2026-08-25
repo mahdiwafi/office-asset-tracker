@@ -4,7 +4,7 @@ import sqlalchemy
 import sqlalchemy.orm as saorm
 from sqlalchemy.orm import selectinload
 
-from app.models import Asset, AssetStatus, Loan, LoanCondition
+from app.models import Asset, AssetStatus, Loan, LoanCondition, Request
 from app.models.approval import Approval, ApprovalDecision
 from app.schemas.loan import LoanCreate
 from app.services.audit import record, snapshot
@@ -59,6 +59,12 @@ async def create_loan(session: saorm.Session, actor_id: int, data: LoanCreate) -
 		due_date=data.due_date,
 		condition_out=data.condition_out,
 	)
+	return await _finalize_loan(session, actor_id, loan)
+
+
+async def _finalize_loan(session: saorm.Session, actor_id: int, loan: Loan) -> Loan:
+	"""Shared loan write: insert, translate the exclusion constraint,
+	mark the asset loaned, and audit the event."""
 	session.add(loan)
 	try:
 		await session.flush()
@@ -69,11 +75,56 @@ async def create_loan(session: saorm.Session, actor_id: int, data: LoanCreate) -
 		# FK violations keep their own meaning.
 		if getattr(error.orig, 'sqlstate', None) == '23P01':
 			raise LoanOverlapError(
-				f'asset {data.asset_id} already has an active loan '
-				f'overlapping {data.start_date} to {data.due_date}'
+				f'asset {loan.asset_id} already has an active loan '
+				f'overlapping {loan.start_date} to {loan.due_date}'
 			) from error
 		raise
+	asset: Asset | None = await session.get(Asset, loan.asset_id)
+	if asset is not None:
+		asset.status = AssetStatus.loaned
+	await record(
+		session,
+		actor_id=actor_id,
+		action='loan.create',
+		entity_type='loan',
+		entity_id=loan.id,
+		after=snapshot(loan),
+	)
 	return loan
+
+
+async def issue_loan_from_request(
+	session: saorm.Session, actor_id: int, request: Request
+) -> Loan | None:
+	"""Approval-side issuance: when an approved request names an asset and
+	a date range, the approval itself issues the loan. Requests without
+	dates are consent-only — the loan is issued separately. There is no
+	availability gate here: the request may name a period after the
+	current loan ends, so the asset can be unavailable today; the
+	exclusion constraint is the guarantee that matters."""
+	if (
+		request.asset_id is None
+		or request.start_date is None
+		or request.due_date is None
+	):
+		return None
+	if request.due_date <= request.start_date:
+		raise LoanDurationExceededError('due date must be after the start date')
+	duration: datetime.timedelta = request.due_date - request.start_date
+	if duration > datetime.timedelta(days=MAX_LOAN_DURATION_DAYS):
+		raise LoanDurationExceededError(
+			f'loan duration of {duration.days} days exceeds the maximum of '
+			f'{MAX_LOAN_DURATION_DAYS} days'
+		)
+	loan: Loan = Loan(
+		asset_id=request.asset_id,
+		borrower_id=request.requester_id,
+		request_id=request.id,
+		start_date=request.start_date,
+		due_date=request.due_date,
+		condition_out=LoanCondition.good,
+	)
+	return await _finalize_loan(session, actor_id, loan)
 
 
 async def return_loan(
@@ -95,6 +146,15 @@ async def return_loan(
 	loan.returned_at = datetime.datetime.now()
 	loan.condition_in = condition_in
 	await session.flush()
+	asset: Asset | None = await session.get(Asset, loan.asset_id)
+	if asset is not None:
+		# The asset comes back to the pool; a poor-condition return keeps
+		# it flagged for repair instead.
+		asset.status = (
+			AssetStatus.damaged
+			if condition_in is LoanCondition.poor
+			else AssetStatus.available
+		)
 	await record(
 		session,
 		actor_id=actor_id,

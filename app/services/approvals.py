@@ -12,6 +12,7 @@ from app.services.errors import (
 	NotAnApproverError,
 	RequestNotFoundError,
 )
+from app.services.loans import issue_loan_from_request
 
 
 async def approve_request(
@@ -45,6 +46,8 @@ async def approve_request(
 	)
 	request.decided_at = datetime.datetime.now()
 	await session.flush()
+	if decision is ApprovalDecision.approved:
+		await issue_loan_from_request(session, actor_id, request)
 	await record(
 		session,
 		actor_id=actor_id,

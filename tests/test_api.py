@@ -159,7 +159,9 @@ async def test_double_booking_same_asset_returns_409(
 	assert first.status_code == 201
 	second = await client.post('/loans', headers=headers, json=payload)
 	assert second.status_code == 409
-	assert 'already has an active loan' in second.json()['detail']
+	# The first loan's creation flipped the asset to loaned, so the second
+	# attempt is caught by the availability gate before the overlap check.
+	assert 'is loaned and cannot be loaned' in second.json()['detail']
 	# Only the winning loan exists — the loser never reached the DB.
 	loans = await session.scalars(
 		sqlalchemy.select(Loan).where(Loan.asset_id == asset_id)

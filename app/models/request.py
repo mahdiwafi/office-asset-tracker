@@ -30,6 +30,13 @@ class Request(Base):
 		sqlalchemy.ForeignKey('categories.id', ondelete='RESTRICT'),
 		index=True,
 	)
+	# The requested date range. Nullable for backwards compatibility: a
+	# request without dates is consent-only and the loan is issued
+	# separately. When dates are present, approval issues the loan itself.
+	start_date: saorm.Mapped[datetime.date | None] = saorm.mapped_column(
+		sqlalchemy.Date
+	)
+	due_date: saorm.Mapped[datetime.date | None] = saorm.mapped_column(sqlalchemy.Date)
 	justification: saorm.Mapped[str] = saorm.mapped_column(sqlalchemy.Text)
 	# Idempotency-Key header: one key may ever create one request. The
 	# unique constraint is the arbiter; the service pre-check is the

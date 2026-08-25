@@ -22,7 +22,7 @@ from app.models import (
 	UserRole,
 )
 from app.schemas.loan import LoanCreate
-from app.services.errors import LoanOverlapError
+from app.services.errors import AssetUnavailableError, LoanOverlapError
 from app.services.loans import create_loan
 
 
@@ -61,14 +61,17 @@ async def test_parallel_loans_cannot_double_book(db_session, session_factory) ->
 	)
 	try:
 		async with session_factory() as first, session_factory() as second:
-			# Two requests, fired at the same time. The loser blocks inside
-			# its INSERT, waiting on the exclusion index, until the winner
-			# commits — then the index rejects it and the service raises.
+			# Two requests, fired at the same time. The winner's commit also
+			# flips the asset to loaned, so the loser is rejected by whichever
+			# guard it reaches first: the availability gate (its asset read
+			# lands after the commit) or the exclusion index inside its INSERT
+			# (it read available before the commit). Either rejection proves
+			# the same invariant below — exactly one loan survives.
 			await create_loan(first, actor_id, data)
 			loser = asyncio.create_task(create_loan(second, actor_id, data))
 			await asyncio.sleep(0)  # let the second request reach the database
 			await first.commit()
-			with pytest.raises(LoanOverlapError):
+			with pytest.raises((AssetUnavailableError, LoanOverlapError)):
 				await loser
 		active_count = await db_session.scalar(
 			sqlalchemy.select(sqlalchemy.func.count())

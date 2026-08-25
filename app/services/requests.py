@@ -41,6 +41,8 @@ async def create_request(
 		asset_id=data.asset_id,
 		category_id=data.category_id,
 		justification=data.justification,
+		start_date=data.start_date,
+		due_date=data.due_date,
 		idempotency_key=idempotency_key,
 	)
 	session.add(request)
