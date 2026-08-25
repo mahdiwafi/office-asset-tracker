@@ -35,16 +35,16 @@ page, which runs with the key.
 
 | # | Family | Question | Expected article | Retrieval (top-10) | Outcome |
 | --- | --- | --- | --- | --- | --- |
-| 1 | exact | How long can I borrow a laptop? | loan-periods | ✅ rank 2 (eligibility-and-priority noise on top) | |
-| 2 | exact | What do I return when I leave the company? | offboarding-returns | ✅ rank 1 | |
-| 3 | paraphrase | I am flying abroad for a client workshop — can I take the projector with me? | asset-care | ❌ at top-5: the travel chunk was cut (keyword overlap "projector"/"workshop" boosted eligibility; RRF pool too small) → top_k raised to 10, travel chunk at rank 4 — **the golden set caught the miss** (2026-08-25) | refused *honestly* (evidence was withheld, not absent) — re-grade after re-deploy |
-| 4 | paraphrase | How do I get a second monitor for report writing? | requesting-equipment | ✅ rank 1 | |
-| 5 | fuzzy | My laptop screen is cracked, what should I do? | damage-and-loss | ✅ rank 1 | |
-| 6 | paraphrase | Can I keep a headset for the whole project? | loan-periods | ✅ rank 3 (asset-care on top) | |
-| 7 | eligibility | Who gets a camera when several people want one? | eligibility-and-priority | ✅ rank 1 | |
-| 8 | near-miss | What time does the office open? | — (noise fine) | noise: damage-and-loss — must refuse | |
-| 9 | out-of-scope | What is the capital of France? | — (noise fine) | noise: asset-care — must refuse | |
-| 10 | nonsense | zzzzqqqq | — (noise fine) | noise: damage-and-loss — floor refusal, no model call | |
+| 1 | exact | How long can I borrow a laptop? | loan-periods | ✅ rank 2 (eligibility-and-priority noise on top) | ✅ standard 14-day period cited; eligibility noise ignored |
+| 2 | exact | What do I return when I leave the company? | offboarding-returns | ✅ rank 1 | ✅ return list verbatim from offboarding-returns |
+| 3 | paraphrase | I am flying abroad for a client workshop — can I take the projector with me? | asset-care | ❌ at top-5: the travel chunk was cut (keyword overlap "projector"/"workshop" boosted eligibility; RRF pool too small) → top_k raised to 10, travel chunk at rank 4 — **the golden set caught the miss** (2026-08-25) | ✅ travel rule [4] + high-demand priority [3]; refused honestly at top-5, answered after top_k→10 (2026-08-25) |
+| 4 | paraphrase | How do I get a second monitor for report writing? | requesting-equipment | ✅ rank 1 | ✅ all five claims verbatim from requesting-equipment, cited [1] |
+| 5 | fuzzy | My laptop screen is cracked, what should I do? | damage-and-loss | ✅ rank 1 | ✅ every claim verbatim (24h report, no self-repair, assess/write-off, spare pool, negligence) |
+| 6 | paraphrase | Can I keep a headset for the whole project? | loan-periods | ✅ rank 3 (asset-care on top) | ✅ renewals + long-term verbatim; correct chunk (c0) picked |
+| 7 | eligibility | Who gets a camera when several people want one? | eligibility-and-priority | ✅ rank 1 | ✅ priority ladder verbatim, in order |
+| 8 | near-miss | What time does the office open? | — (noise fine) | noise: damage-and-loss — must refuse | ✅ near-miss refused via model referee; no office-hours content anywhere |
+| 9 | out-of-scope | What is the capital of France? | — (noise fine) | noise: asset-care — must refuse | ✅ out-of-scope refused (never said Paris); 0.0328 above floor → referee, not threshold |
+| 10 | nonsense | zzzzqqqq | — (noise fine) | noise: damage-and-loss — floor refusal, no model call | ✅ 0.0167 < 0.020 floor → deterministic refusal, no model call |
 
 Reading the scores: everything landed in 0.0299–0.0333 regardless of
 relevance — the same uncalibrated RRF band as the refusal battery. The
