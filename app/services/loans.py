@@ -91,6 +91,7 @@ async def return_loan(
 		)
 	if loan.returned_at is not None:
 		raise LoanAlreadyReturnedError(f'loan {loan_id} is already returned')
+	before = snapshot(loan)
 	loan.returned_at = datetime.datetime.now()
 	loan.condition_in = condition_in
 	await session.flush()
@@ -100,6 +101,7 @@ async def return_loan(
 		action='loan.return',
 		entity_type='loan',
 		entity_id=loan.id,
+		before=before,
 		after=snapshot(loan),
 	)
 	return loan
@@ -130,6 +132,7 @@ async def extend_loan(
 			raise OverdueExtensionError(
 				f'loan {loan_id} is overdue; extending it requires an approved escalation'
 			)
+	before = snapshot(loan)
 	loan.due_date = new_due_date
 	try:
 		await session.flush()
@@ -148,6 +151,7 @@ async def extend_loan(
 		action='loan.extend',
 		entity_type='loan',
 		entity_id=loan.id,
+		before=before,
 		after=snapshot(loan),
 	)
 	return loan

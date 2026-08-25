@@ -33,6 +33,7 @@ async def approve_request(
 		raise RequestNotFoundError(f'request {request_id} not found')
 	if request.status is not RequestStatus.pending:
 		raise AlreadyDecidedError(f'request {request_id} was already decided')
+	before = snapshot(request)
 	approval: Approval = Approval(
 		request_id=request.id, approver_id=actor_id, decision=decision, note=note
 	)
@@ -50,6 +51,7 @@ async def approve_request(
 		action='request.decide',
 		entity_type='request',
 		entity_id=request.id,
+		before=before,
 		after=snapshot(request),
 	)
 	return approval
