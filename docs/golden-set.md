@@ -21,7 +21,7 @@ the full stack; the script is the same service, one step closer.
 
 ## Rubric
 
-- **Retrieval** — does the expected article appear in the top-5
+- **Retrieval** — does the expected article appear in the top-10
   citations? (For refusal rows, noise is expected and harmless.)
 - **Outcome** — for answerable pairs: does the answer state the policy
   fact from the cited article and nothing else? For refusal rows: does
@@ -33,11 +33,11 @@ Retrieval column from the live run of 2026-08-24 (generation OFF — no
 local key). Outcome column is graded by hand on the deployed Ask ICT
 page, which runs with the key.
 
-| # | Family | Question | Expected article | Retrieval (top-5) | Outcome |
+| # | Family | Question | Expected article | Retrieval (top-10) | Outcome |
 | --- | --- | --- | --- | --- | --- |
 | 1 | exact | How long can I borrow a laptop? | loan-periods | ✅ rank 2 (eligibility-and-priority noise on top) | |
 | 2 | exact | What do I return when I leave the company? | offboarding-returns | ✅ rank 1 | |
-| 3 | paraphrase | I am flying abroad for a client workshop — can I take the projector with me? | asset-care | ✅ rank 5 (eligibility-and-priority on top) | |
+| 3 | paraphrase | I am flying abroad for a client workshop — can I take the projector with me? | asset-care | ❌ at top-5: the travel chunk was cut (keyword overlap "projector"/"workshop" boosted eligibility; RRF pool too small) → top_k raised to 10, travel chunk at rank 4 — **the golden set caught the miss** (2026-08-25) | refused *honestly* (evidence was withheld, not absent) — re-grade after re-deploy |
 | 4 | paraphrase | How do I get a second monitor for report writing? | requesting-equipment | ✅ rank 1 | |
 | 5 | fuzzy | My laptop screen is cracked, what should I do? | damage-and-loss | ✅ rank 1 | |
 | 6 | paraphrase | Can I keep a headset for the whole project? | loan-periods | ✅ rank 3 (asset-care on top) | |
@@ -48,9 +48,19 @@ page, which runs with the key.
 
 Reading the scores: everything landed in 0.0299–0.0333 regardless of
 relevance — the same uncalibrated RRF band as the refusal battery. The
-top-1 vs rank-5 gaps (0.0003–0.0027) are meaningless; what matters is
-whether the expected article is in the top-5 at all, and whether the
-model picks the right excerpt when several candidates are near-equal.
+rank gaps (0.0003–0.0027) are meaningless; what matters is whether the
+expected article is in the top-10 at all, and whether the model picks
+the right excerpt when several candidates are near-equal.
+
+**2026-08-25 finding — the set proved itself.** Row 3's live run
+returned a refusal: at top-k=5 the travel chunk was not in the pool at
+all (keyword overlap "projector"/"workshop" boosted eligibility chunks
+past it; RRF's rank-based scores with a 5-row pool are fragile). The
+model refused honestly — from evidence that should have been there.
+Retrieving with top-k=10 puts the travel chunk at rank 4. `top_k` was
+raised to 10 (ADR 0004 amendment) and the row re-graded. A unit test
+could never have caught this; the golden set did, on its first real
+grading pass.
 
 ## Reference facts (for grading)
 

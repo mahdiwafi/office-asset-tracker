@@ -28,7 +28,7 @@ flowchart LR
     API -->|"JWT validation via JWKS"| Entra
     API -->|SQLAlchemy async| PG[(PostgreSQL)]
     API -->|"hybrid search: BM25 + vector, RRF"| Search[(Azure AI Search)]
-    Search -->|top-5 chunks| API
+    Search -->|top-10 chunks| API
     API -->|"chat completions (Bearer)"| LLM[DeepSeek API]
     LLM -->|grounded answer| API
     API -.->|OpenTelemetry| Insights[Application Insights]

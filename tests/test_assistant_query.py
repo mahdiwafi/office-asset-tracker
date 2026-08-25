@@ -78,17 +78,18 @@ def test_hybrid_search_sends_text_vector_and_top_k(monkeypatch):
 	fake = FakeSearchClient([_result()])
 	monkeypatch.setattr(query, '_clients', lambda: _fake_clients(fake))
 	monkeypatch.setattr(query, 'embed_texts', _fake_embed)
-	results = query.hybrid_search(QUESTION, top_k=5)
+	results = query.hybrid_search(QUESTION, top_k=10)
 	assert results == fake.results
 	assert len(fake.calls) == 1
 	call = fake.calls[0]
 	# Hybrid in one request: BM25 on the text plus a vector query; Azure
-	# merges both with Reciprocal Rank Fusion (RRF).
+	# merges both with Reciprocal Rank Fusion (RRF). top_k=10 since the
+	# golden-set recall miss (2026-08-25) — see answer_question.
 	assert call['search_text'] == QUESTION
-	assert call['top'] == 5
+	assert call['top'] == 10
 	vector_query = call['vector_queries'][0]
 	assert vector_query.vector == [0.5] * 384
-	assert vector_query.k_nearest_neighbors == 5
+	assert vector_query.k_nearest_neighbors == 10
 	assert vector_query.fields == 'content_vector'
 
 

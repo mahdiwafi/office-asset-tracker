@@ -10,7 +10,9 @@ Day 6 adds a staff-facing assistant that answers IT policy questions from the of
 
 ## Decision
 
-1. **Retrieval: Azure AI Search Free tier.** The index is defined in code (`app/assistant/search.py`), created idempotently by the ingest CLI (`uv run python -m app.assistant.ingest`). Queries are hybrid in one request: BM25 full-text plus a vector query, merged server-side by Reciprocal Rank Fusion, top-k = 5. The missing semantic ranker is accepted: hybrid + top-k is already above what a 10-chunk corpus needs, and the ranker's absence is documented rather than papered over.
+1. **Retrieval: Azure AI Search Free tier.** The index is defined in code (`app/assistant/search.py`), created idempotently by the ingest CLI (`uv run python -m app.assistant.ingest`). Queries are hybrid in one request: BM25 full-text plus a vector query, merged server-side by Reciprocal Rank Fusion, top-k = 10. The missing semantic ranker is accepted: hybrid + top-k is already above what a 10-chunk corpus needs, and the ranker's absence is documented rather than papered over.
+
+    **Amendment (2026-08-25) — top-k raised from 5 to 10.** The Day 7 golden set caught a recall miss on its first real grading pass: for the projector-travel question, a top-k=5 pool let keyword overlap ("projector"/"workshop" hitting the eligibility article) crowd the correct asset-care chunk out of the pool, and the model refused honestly from evidence that should have been there. With a top-k=10 pool the correct chunk ranks 4th. Ten chunks cost ~4k prompt tokens on this corpus, and the model demonstrably ignores the chunks it does not cite — during golden-set grading it refused noise chunks three times in a row (citing [2] and [3] while the top-scored chunk was irrelevant). This is the manual-evaluation loop from ADR 0005 working as designed: a unit test cannot catch a retrieval miss, the golden set did.
 
 2. **Embeddings: local fastembed (ONNX), BAAI/bge-small-en-v1.5, 384 dims.** No external embedding API: zero per-token cost, works offline, keeps tests hermetic, and 384 dims are far under the 4096-dim cap. The model is baked into the image at build time so the first query is instant.
 

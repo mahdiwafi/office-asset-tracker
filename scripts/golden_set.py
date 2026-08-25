@@ -19,7 +19,7 @@ import os
 
 from app.assistant.query import answer_question
 
-# (category, question, expected articles in top-5; empty = noise is fine)
+# (category, question, expected articles in top-10; empty = noise is fine)
 GOLDEN_SET: list[tuple[str, str, list[str]]] = [
 	('exact', 'How long can I borrow a laptop?', ['loan-periods']),
 	('exact', 'What do I return when I leave the company?', ['offboarding-returns']),

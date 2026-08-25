@@ -55,7 +55,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def hybrid_search(question: str, *, top_k: int = 5) -> list[dict]:
+def hybrid_search(question: str, *, top_k: int = 10) -> list[dict]:
 	"""One request, two signals: BM25 on the text, nearest-neighbour on
 	the vector. Azure merges both with RRF."""
 	_, search_client = _clients()
@@ -138,8 +138,15 @@ def _generate(question: str, results: list[dict]) -> str:
 	return response.json()['choices'][0]['message']['content']
 
 
-def answer_question(question: str, *, top_k: int = 5) -> AssistantAnswer:
-	"""Retrieve, cite, then (if configured) generate a grounded answer."""
+def answer_question(question: str, *, top_k: int = 10) -> AssistantAnswer:
+	"""Retrieve, cite, then (if configured) generate a grounded answer.
+
+	top_k=10 since the golden-set recall miss (2026-08-25): with 5, RRF's
+	rank-based scores let keyword overlap ("projector"/"workshop" hitting
+	eligibility) crowd the correct chunk out of the pool; 10 costs ~4k
+	prompt tokens on this corpus, and the model ignores the chunks it
+	does not cite — the citation markers are the quality signal."""
+
 	results = hybrid_search(question, top_k=top_k)
 	citations = build_citations(results)
 	if not citations or not settings.llm_api_key:
