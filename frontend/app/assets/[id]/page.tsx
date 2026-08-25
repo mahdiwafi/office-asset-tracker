@@ -5,6 +5,11 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { ApiError, api } from '@/lib/api';
+import { ASSET_STATUS_TONES, CONDITION_TONES, StatusBadge } from '../../components/badge';
+import { Card } from '../../components/card';
+import { Alert, LoadingState } from '../../components/feedback';
+import { ArrowLeft } from '../../components/icons';
+import { PageHeader } from '../../components/page-header';
 import { RequireAuth } from '../../components/require-auth';
 
 type Asset = {
@@ -32,28 +37,56 @@ export default function AssetDetailPage() {
 		<RequireAuth>
 			<main className="mx-auto max-w-3xl px-4 py-8">
 				<p className="mb-4">
-					<Link href="/" className="text-sm text-blue-700 hover:underline">
-						← Asset catalog
+					<Link
+						href="/"
+						className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900"
+					>
+						<ArrowLeft className="h-4 w-4" />
+						Asset catalog
 					</Link>
 				</p>
-				<h1 className="mb-4 text-xl font-semibold">Asset detail</h1>
-				{error && <p className="mb-4 text-red-700">{error}</p>}
-				{!asset && !error && <p className="text-gray-500">Loading…</p>}
+				<PageHeader title="Asset detail" description={asset?.name} />
+				{error && (
+					<Alert tone="red" title="Could not load this asset">
+						{error}
+					</Alert>
+				)}
+				{!asset && !error && <LoadingState label="Loading asset…" />}
 				{asset && (
-					<dl className="grid grid-cols-2 gap-4 rounded border border-gray-200 bg-white p-6 text-sm">
-						<dt className="text-gray-500">Inventory tag</dt>
-						<dd className="font-mono">{asset.inventory_tag}</dd>
-						<dt className="text-gray-500">Name</dt>
-						<dd>{asset.name}</dd>
-						<dt className="text-gray-500">Serial number</dt>
-						<dd className="font-mono">{asset.serial ?? '—'}</dd>
-						<dt className="text-gray-500">Category id</dt>
-						<dd>{asset.category_id ?? '—'}</dd>
-						<dt className="text-gray-500">Status</dt>
-						<dd>{asset.status}</dd>
-						<dt className="text-gray-500">Condition</dt>
-						<dd>{asset.condition}</dd>
-					</dl>
+					<Card className="p-6">
+						<div className="flex items-center gap-3">
+							<p className="text-lg font-semibold text-gray-900">{asset.name}</p>
+							<StatusBadge value={asset.status} tones={ASSET_STATUS_TONES} />
+						</div>
+						<dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-3">
+							<div>
+								<dt className="text-xs font-medium uppercase tracking-wide text-gray-500">
+									Inventory tag
+								</dt>
+								<dd className="mt-1 font-mono text-sm text-gray-900">{asset.inventory_tag}</dd>
+							</div>
+							<div>
+								<dt className="text-xs font-medium uppercase tracking-wide text-gray-500">
+									Serial number
+								</dt>
+								<dd className="mt-1 font-mono text-sm text-gray-900">{asset.serial ?? '—'}</dd>
+							</div>
+							<div>
+								<dt className="text-xs font-medium uppercase tracking-wide text-gray-500">
+									Category id
+								</dt>
+								<dd className="mt-1 text-sm text-gray-900">{asset.category_id ?? '—'}</dd>
+							</div>
+							<div>
+								<dt className="text-xs font-medium uppercase tracking-wide text-gray-500">
+									Condition
+								</dt>
+								<dd className="mt-1">
+									<StatusBadge value={asset.condition} tones={CONDITION_TONES} />
+								</dd>
+							</div>
+						</dl>
+					</Card>
 				)}
 			</main>
 		</RequireAuth>

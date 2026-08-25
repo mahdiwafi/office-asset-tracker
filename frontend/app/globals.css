@@ -1,8 +1,11 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
+/* Light-mode only by decision — pages hardcode light tokens everywhere, so
+   a dark block here would only render white tables on black. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #f9fafb; /* gray-50 — the canvas for white cards */
+  --foreground: #111827; /* gray-900 */
 }
 
 @theme inline {
@@ -12,15 +15,8 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
 }

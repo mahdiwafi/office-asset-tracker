@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { ApiError, api } from '@/lib/api';
+import { REQUEST_STATUS_TONES, StatusBadge } from '../components/badge';
+import { Button } from '../components/button';
+import { Card } from '../components/card';
+import { Alert, EmptyState, LoadingState } from '../components/feedback';
+import { Check, X } from '../components/icons';
+import { PageHeader } from '../components/page-header';
 import { RequireAuth } from '../components/require-auth';
 
 type Me = {
@@ -63,54 +69,74 @@ export default function ApprovalsPage() {
 	return (
 		<RequireAuth>
 			<main className="mx-auto max-w-4xl px-4 py-8">
-				<h1 className="mb-4 text-xl font-semibold">Approval queue</h1>
-				{error && <p className="mb-4 text-red-700">{error}</p>}
+				<PageHeader
+					title="Approval queue"
+					description="Pending requests waiting for a decision."
+				/>
+				{error && (
+					<Alert tone="red" title="Something went wrong">
+						{error}
+					</Alert>
+				)}
 				{me && !APPROVER_ROLES.includes(me.role) && (
-					<p className="text-gray-600">
-						Only approvers can review requests. Your role is <strong>{me.role}</strong> — ask an
-						admin to grant you the Approver role in Entra ID if you need to.
-					</p>
+					<Alert tone="amber" title="Approver role required">
+						<p className="text-amber-800">
+							Only approvers can review requests. Your role is <strong>{me.role}</strong> — ask an
+							admin to grant you the Approver role in Entra ID if you need to.
+						</p>
+					</Alert>
 				)}
 				{me && APPROVER_ROLES.includes(me.role) && !pending && !error && (
-					<p className="text-gray-500">Loading…</p>
+					<LoadingState label="Loading requests…" />
 				)}
 				{me &&
 					APPROVER_ROLES.includes(me.role) &&
 					pending &&
 					(pending.length === 0 ? (
-						<p className="text-gray-500">No pending requests. Nice.</p>
+						<EmptyState
+							title="No pending requests"
+							description="New requests will appear here for review."
+							icon={<Check className="h-8 w-8" />}
+						/>
 					) : (
 						<ul className="space-y-4">
 							{pending.map((req) => (
-								<li key={req.id} className="rounded border border-gray-200 bg-white p-4">
-									<div className="flex items-start justify-between gap-4">
-										<div>
-											<p className="text-sm font-medium">
-												Request #{req.id} · asset #{req.asset_id ?? '—'} · by user{' '}
-												{req.requester_id}
-											</p>
-											<p className="mt-1 text-sm text-gray-700">{req.justification}</p>
-											<p className="mt-2 text-xs text-gray-500">
-												Created {new Date(req.created_at).toLocaleString()}
-											</p>
+								<li key={req.id}>
+									<Card className="p-4 transition-colors hover:border-gray-300">
+										<div className="flex items-start justify-between gap-4">
+											<div>
+												<div className="flex items-center gap-2">
+													<p className="text-sm font-medium text-gray-900">Request #{req.id}</p>
+													<StatusBadge value={req.status} tones={REQUEST_STATUS_TONES} />
+												</div>
+												<p className="mt-1 font-mono text-xs text-gray-500">
+													asset #{req.asset_id ?? '—'} · by user {req.requester_id}
+												</p>
+												<p className="mt-2 text-sm text-gray-600">{req.justification}</p>
+												<p className="mt-2 text-xs text-gray-400">
+													Created {new Date(req.created_at).toLocaleString()}
+												</p>
+											</div>
+											<div className="flex shrink-0 gap-2">
+												<Button
+													variant="success"
+													busy={actingOn === req.id}
+													onClick={() => decide(req.id, 'approved')}
+												>
+													<Check className="h-4 w-4" />
+													Approve
+												</Button>
+												<Button
+													variant="danger"
+													disabled={actingOn === req.id}
+													onClick={() => decide(req.id, 'declined')}
+												>
+													<X className="h-4 w-4" />
+													Decline
+												</Button>
+											</div>
 										</div>
-										<div className="flex shrink-0 gap-2">
-											<button
-												onClick={() => decide(req.id, 'approved')}
-												disabled={actingOn === req.id}
-												className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
-											>
-												Approve
-											</button>
-											<button
-												onClick={() => decide(req.id, 'declined')}
-												disabled={actingOn === req.id}
-												className="rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-50"
-											>
-												Decline
-											</button>
-										</div>
-									</div>
+									</Card>
 								</li>
 							))}
 						</ul>

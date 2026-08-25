@@ -4,6 +4,11 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { ApiError, api } from '@/lib/api';
+import { ASSET_STATUS_TONES, CONDITION_TONES, StatusBadge } from './components/badge';
+import { Card, StatCard } from './components/card';
+import { Alert, EmptyState, LoadingState } from './components/feedback';
+import { Box, Calendar, Check, Info } from './components/icons';
+import { PageHeader } from './components/page-header';
 import { RequireAuth } from './components/require-auth';
 
 type Asset = {
@@ -25,39 +30,91 @@ export default function AssetListPage() {
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
 	}, []);
 
+	const counts = {
+		total: assets?.length ?? 0,
+		available: assets?.filter((a) => a.status === 'available').length ?? 0,
+		loaned: assets?.filter((a) => a.status === 'loaned').length ?? 0,
+		damaged: assets?.filter((a) => a.status === 'damaged').length ?? 0,
+	};
+
 	return (
 		<RequireAuth>
-			<main className="mx-auto max-w-5xl px-4 py-8">
-				<h1 className="mb-4 text-xl font-semibold">Asset catalog</h1>
-				{error && <p className="mb-4 text-red-700">{error}</p>}
-				{!assets && !error && <p className="text-gray-500">Loading…</p>}
-				{assets && (
-					<table className="w-full border-collapse bg-white text-sm shadow-sm">
-						<thead>
-							<tr className="border-b border-gray-200 text-left text-gray-500">
-								<th className="px-3 py-2">Tag</th>
-								<th className="px-3 py-2">Name</th>
-								<th className="px-3 py-2">Status</th>
-								<th className="px-3 py-2">Condition</th>
-							</tr>
-						</thead>
-						<tbody>
-							{assets.map((asset) => (
-								<tr key={asset.id} className="border-b border-gray-100">
-									<td className="px-3 py-2 font-mono">{asset.inventory_tag}</td>
-									<td className="px-3 py-2">
-										<Link href={`/assets/${asset.id}`} className="text-blue-700 hover:underline">
-											{asset.name}
-										</Link>
-									</td>
-									<td className="px-3 py-2">{asset.status}</td>
-									<td className="px-3 py-2">{asset.condition}</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
+			<main className="mx-auto w-full max-w-6xl px-4 py-8">
+				<PageHeader title="Asset catalog" description="All ICT equipment and its current state." />
+				{error && (
+					<Alert tone="red" title="Could not load assets">
+						{error}
+					</Alert>
 				)}
-				{assets && assets.length === 0 && <p className="text-gray-500">No assets yet.</p>}
+				{!assets && !error && <LoadingState label="Loading assets…" />}
+				{assets && (
+					<>
+						<div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+							<StatCard label="Total assets" value={counts.total} icon={<Box className="h-4 w-4" />} />
+							<StatCard
+								label="Available"
+								value={counts.available}
+								tone="green"
+								icon={<Check className="h-4 w-4" />}
+							/>
+							<StatCard
+								label="On loan"
+								value={counts.loaned}
+								icon={<Calendar className="h-4 w-4" />}
+							/>
+							<StatCard
+								label="Damaged"
+								value={counts.damaged}
+								tone="red"
+								icon={<Info className="h-4 w-4" />}
+							/>
+						</div>
+						{assets.length === 0 ? (
+							<EmptyState
+								title="No assets yet"
+								description="Assets appear here once they are added to the system."
+								icon={<Box className="h-8 w-8" />}
+							/>
+						) : (
+							<Card className="overflow-hidden">
+								<table className="w-full text-sm">
+									<thead>
+										<tr className="bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+											<th className="px-4 py-3 font-medium">Tag</th>
+											<th className="px-4 py-3 font-medium">Name</th>
+											<th className="px-4 py-3 font-medium">Status</th>
+											<th className="px-4 py-3 font-medium">Condition</th>
+										</tr>
+									</thead>
+									<tbody>
+										{assets.map((asset) => (
+											<tr
+												key={asset.id}
+												className="border-t border-gray-100 transition-colors hover:bg-gray-50"
+											>
+												<td className="px-4 py-3 font-mono text-xs">{asset.inventory_tag}</td>
+												<td className="px-4 py-3">
+													<Link
+														href={`/assets/${asset.id}`}
+														className="font-medium text-blue-700 hover:underline"
+													>
+														{asset.name}
+													</Link>
+												</td>
+												<td className="px-4 py-3">
+													<StatusBadge value={asset.status} tones={ASSET_STATUS_TONES} />
+												</td>
+												<td className="px-4 py-3">
+													<StatusBadge value={asset.condition} tones={CONDITION_TONES} />
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</Card>
+						)}
+					</>
+				)}
 			</main>
 		</RequireAuth>
 	);

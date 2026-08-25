@@ -3,6 +3,11 @@
 import { FormEvent, useEffect, useState } from 'react';
 
 import { ApiError, api } from '@/lib/api';
+import { Button } from '../../components/button';
+import { Card } from '../../components/card';
+import { Alert, LoadingState } from '../../components/feedback';
+import { Plus } from '../../components/icons';
+import { PageHeader } from '../../components/page-header';
 import { RequireAuth } from '../../components/require-auth';
 
 type Asset = {
@@ -17,6 +22,9 @@ type RaisedRequest = {
 	status: string;
 	created_at: string;
 };
+
+const INPUT_CLASSES =
+	'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20';
 
 export default function RaiseRequestPage() {
 	const [assets, setAssets] = useState<Asset[] | null>(null);
@@ -56,67 +64,67 @@ export default function RaiseRequestPage() {
 	return (
 		<RequireAuth>
 			<main className="mx-auto max-w-2xl px-4 py-8">
-				<h1 className="mb-4 text-xl font-semibold">Raise a request</h1>
-				{error && <p className="mb-4 text-red-700">{error}</p>}
+				<PageHeader
+					title="Raise a request"
+					description="Ask for equipment — an approver will review it."
+				/>
+				{error && (
+					<Alert tone="red" title="Could not submit the request">
+						{error}
+					</Alert>
+				)}
 				{created && (
-					<div className="mb-6 rounded border border-green-200 bg-green-50 p-4 text-sm">
-						<p className="font-medium text-green-900">
-							Request #{created.id} submitted ({created.status}).
-						</p>
-						<p className="mt-1 text-green-800">
+					<Alert tone="green" title={`Request #${created.id} submitted (${created.status}).`}>
+						<p className="text-green-800">
 							An approver will review it. Track it on the Approvals page (approvers) — you can
 							also raise another request below.
 						</p>
-					</div>
+					</Alert>
 				)}
-				{!assets && !error && <p className="text-gray-500">Loading assets…</p>}
+				{!assets && !error && <LoadingState label="Loading assets…" />}
 				{assets && (
-					<form
-						onSubmit={handleSubmit}
-						className="space-y-4 rounded border border-gray-200 bg-white p-6"
-					>
-						<div>
-							<label htmlFor="asset" className="mb-1 block text-sm font-medium text-gray-700">
-								Asset
-							</label>
-							<select
-								id="asset"
-								value={assetId}
-								onChange={(e) => setAssetId(e.target.value)}
-								className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-							>
-								{assets.map((asset) => (
-									<option key={asset.id} value={asset.id}>
-										{asset.inventory_tag} — {asset.name} ({asset.status})
-									</option>
-								))}
-							</select>
-						</div>
-						<div>
-							<label
-								htmlFor="justification"
-								className="mb-1 block text-sm font-medium text-gray-700"
-							>
-								Justification
-							</label>
-							<textarea
-								id="justification"
-								value={justification}
-								onChange={(e) => setJustification(e.target.value)}
-								required
-								rows={4}
-								placeholder="Why do you need this equipment?"
-								className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-							/>
-						</div>
-						<button
-							type="submit"
-							disabled={submitting}
-							className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-50"
-						>
-							{submitting ? 'Submitting…' : 'Submit request'}
-						</button>
-					</form>
+					<Card className="p-6">
+						<form onSubmit={handleSubmit} className="space-y-4">
+							<div>
+								<label htmlFor="asset" className="mb-1 block text-sm font-medium text-gray-700">
+									Asset
+								</label>
+								<select
+									id="asset"
+									value={assetId}
+									onChange={(e) => setAssetId(e.target.value)}
+									className={INPUT_CLASSES}
+								>
+									{assets.map((asset) => (
+										<option key={asset.id} value={asset.id}>
+											{asset.inventory_tag} — {asset.name} ({asset.status})
+										</option>
+									))}
+								</select>
+							</div>
+							<div>
+								<label
+									htmlFor="justification"
+									className="mb-1 block text-sm font-medium text-gray-700"
+								>
+									Justification
+								</label>
+								<textarea
+									id="justification"
+									value={justification}
+									onChange={(e) => setJustification(e.target.value)}
+									required
+									rows={4}
+									placeholder="Why do you need this equipment?"
+									className={INPUT_CLASSES}
+								/>
+							</div>
+							<Button type="submit" busy={submitting}>
+								<Plus className="h-4 w-4" />
+								Submit request
+							</Button>
+						</form>
+					</Card>
 				)}
 			</main>
 		</RequireAuth>
