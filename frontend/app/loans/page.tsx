@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { ApiError, api } from '@/lib/api';
 import { Badge, CONDITION_TONES, StatusBadge } from '../components/badge';
+import { Button } from '../components/button';
 import { Card, StatCard } from '../components/card';
 import { Alert, EmptyState, LoadingState } from '../components/feedback';
 import { Calendar, Check, Info } from '../components/icons';
@@ -37,6 +38,11 @@ export default function MyLoansPage() {
 	const [me, setMe] = useState<Me | null>(null);
 	const [loans, setLoans] = useState<Loan[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	// The row currently in return mode, its chosen returned condition,
+	// and whether the confirm POST is in flight.
+	const [returningId, setReturningId] = useState<number | null>(null);
+	const [returnCondition, setReturnCondition] = useState('good');
+	const [returnBusy, setReturnBusy] = useState(false);
 
 	useEffect(() => {
 		api('/users/me')
@@ -51,6 +57,27 @@ export default function MyLoansPage() {
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
 	}, [me]);
 
+	async function handleReturn(loanId: number) {
+		if (!me) return;
+		setReturnBusy(true);
+		setError(null);
+		try {
+			await api(`/loans/${loanId}/return`, {
+				method: 'POST',
+				body: { condition_in: returnCondition },
+			});
+			setReturningId(null);
+			// Refetch so the row's badge and the KPI counts agree with the
+			// backend (a poor return also flags the asset for repair).
+			const body = await api(`/loans?borrower_id=${me.id}`);
+			setLoans(body.items);
+		} catch (e) {
+			setError(e instanceof ApiError ? e.message : String(e));
+		} finally {
+			setReturnBusy(false);
+		}
+	}
+
 	const counts = {
 		active: loans?.filter((l) => !l.returned_at && !isOverdue(l)).length ?? 0,
 		overdue: loans?.filter(isOverdue).length ?? 0,
@@ -62,7 +89,7 @@ export default function MyLoansPage() {
 			<main className="mx-auto w-full max-w-6xl px-4 py-8">
 				<PageHeader title="My loans" description="Loans issued to you, with due dates." />
 				{error && (
-					<Alert tone="red" title="Could not load loans">
+					<Alert tone="red" title="Something went wrong">
 						{error}
 					</Alert>
 				)}
@@ -105,6 +132,7 @@ export default function MyLoansPage() {
 											<th className="px-4 py-3 font-medium">Condition out</th>
 											<th className="px-4 py-3 font-medium">Condition in</th>
 											<th className="px-4 py-3 font-medium">Status</th>
+											<th className="px-4 py-3 font-medium">Actions</th>
 										</tr>
 									</thead>
 									<tbody>
@@ -151,6 +179,48 @@ export default function MyLoansPage() {
 															<Badge tone="red">Overdue</Badge>
 														) : (
 															<Badge tone="blue">Active</Badge>
+														)}
+													</td>
+													<td className="px-4 py-3">
+														{loan.returned_at ? (
+															<span className="text-gray-300">—</span>
+														) : returningId === loan.id ? (
+															<div className="flex items-center gap-2">
+																<select
+																	value={returnCondition}
+																	onChange={(e) => setReturnCondition(e.target.value)}
+																	className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+																	aria-label="Returned condition"
+																>
+																	<option value="good">good</option>
+																	<option value="fair">fair</option>
+																	<option value="poor">poor</option>
+																</select>
+																<Button
+																	variant="success"
+																	busy={returnBusy}
+																	onClick={() => handleReturn(loan.id)}
+																>
+																	Confirm
+																</Button>
+																<Button
+																	variant="secondary"
+																	disabled={returnBusy}
+																	onClick={() => setReturningId(null)}
+																>
+																	Cancel
+																</Button>
+															</div>
+														) : (
+															<Button
+																variant="secondary"
+																onClick={() => {
+																	setReturningId(loan.id);
+																	setReturnCondition('good');
+																}}
+															>
+																Return
+															</Button>
 														)}
 													</td>
 												</tr>
