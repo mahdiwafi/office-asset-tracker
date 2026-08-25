@@ -194,7 +194,7 @@ async def test_double_booking_same_asset_returns_409(
 	assert len(loans.all()) == 1
 
 
-async def test_return_loan_without_condition_returns_400(
+async def test_return_is_requested_by_the_borrower_and_decided_by_an_approver(
 	api_client, bearer_headers
 ) -> None:
 	client, session = api_client
@@ -209,16 +209,33 @@ async def test_return_loan_without_condition_returns_400(
 		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
 	)
 	loan_id = create.json()['id']
-	# No body at all: condition_in defaults to None, and the service
-	# refuses to accept a return without recording the returned condition.
-	response = await client.post(f'/loans/{loan_id}/return', headers=headers)
-	assert response.status_code == 400
-	assert 'requires recording' in response.json()['detail']
+	# Step 1: the borrower requests the return — no body, no condition;
+	# the borrower does not grade their own return.
+	requested = await client.post(f'/loans/{loan_id}/return', headers=headers)
+	assert requested.status_code == 200
 	loan = await session.get(Loan, loan_id)
+	assert loan.return_requested_at is not None
 	assert loan.returned_at is None
+	# Step 2: an approver closes the loan and records the condition.
+	approver_oid = _next_oid()
+	await _seed_user(
+		session, 'http-approver3@example.com', UserRole.approver, approver_oid
+	)
+	decided = await client.post(
+		f'/loans/{loan_id}/return/decision',
+		headers=bearer_headers(approver_oid, roles=['Approver']),
+		json={'decision': 'approved', 'condition_in': 'good'},
+	)
+	assert decided.status_code == 200
+	loan = await session.get(Loan, loan_id)
+	assert loan.returned_at is not None
+	assert loan.condition_in is LoanCondition.good
+	assert loan.return_requested_at is None
+	asset = await session.get(Asset, asset_id)
+	assert asset.status is AssetStatus.available
 
 
-async def test_return_loan_with_condition_restores_the_asset(
+async def test_return_decision_without_a_condition_returns_400(
 	api_client, bearer_headers
 ) -> None:
 	client, session = api_client
@@ -232,19 +249,52 @@ async def test_return_loan_with_condition_restores_the_asset(
 	create = await client.post(
 		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
 	)
-	assert create.status_code == 201
 	loan_id = create.json()['id']
-	# The return body is a named field, like the decision body — the
-	# frontend posts {"condition_in": "good"}.
-	response = await client.post(
-		f'/loans/{loan_id}/return', headers=headers, json={'condition_in': 'good'}
+	await client.post(f'/loans/{loan_id}/return', headers=headers)
+	# Approving a return must record the returned condition — an approval
+	# with condition_in absent is refused (the borrower already returned
+	# the device; the approver grades it).
+	approver_oid = _next_oid()
+	await _seed_user(
+		session, 'http-approver4@example.com', UserRole.approver, approver_oid
 	)
-	assert response.status_code == 200
+	response = await client.post(
+		f'/loans/{loan_id}/return/decision',
+		headers=bearer_headers(approver_oid, roles=['Approver']),
+		json={'decision': 'approved'},
+	)
+	assert response.status_code == 400
+	assert 'requires recording' in response.json()['detail']
 	loan = await session.get(Loan, loan_id)
-	assert loan.returned_at is not None
-	assert loan.condition_in is LoanCondition.good
-	asset = await session.get(Asset, asset_id)
-	assert asset.status is AssetStatus.available
+	assert loan.returned_at is None
+	assert loan.return_requested_at is not None
+
+
+async def test_return_decision_requires_an_approver(api_client, bearer_headers) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-9')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		session, 'http-borrower6@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	create = await client.post(
+		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
+	)
+	loan_id = create.json()['id']
+	await client.post(f'/loans/{loan_id}/return', headers=headers)
+	# The same staff user requests the return and then tries to close it —
+	# only an approver may decide.
+	response = await client.post(
+		f'/loans/{loan_id}/return/decision',
+		headers=headers,
+		json={'decision': 'approved', 'condition_in': 'good'},
+	)
+	assert response.status_code == 403
+	loan = await session.get(Loan, loan_id)
+	assert loan.returned_at is None
+	assert loan.return_requested_at is not None
 
 
 async def test_loan_longer_than_30_days_returns_422(api_client, bearer_headers) -> None:

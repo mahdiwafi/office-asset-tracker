@@ -6,7 +6,7 @@ import datetime
 
 import pytest
 
-from app.models import AssetStatus, LoanCondition
+from app.models import AssetStatus, LoanCondition, UserRole
 from app.models.approval import ApprovalDecision
 from app.schemas.asset import AssetCreate
 from app.schemas.loan import LoanCreate
@@ -27,8 +27,9 @@ from app.services.errors import (
 from app.services.loans import (
 	MAX_LOAN_DURATION_DAYS,
 	create_loan,
+	decide_return,
 	extend_loan,
-	return_loan,
+	request_return,
 )
 from app.services.requests import create_request
 
@@ -174,11 +175,15 @@ async def test_a_request_cannot_be_approved_by_a_non_manager(
 async def test_a_return_cannot_be_processed_without_recording_condition(
 	db_session, user_factory, asset_factory, loan_factory
 ) -> None:
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
 	actor = await user_factory()
 	asset = await asset_factory()
 	loan = await loan_factory(asset, actor, returned=False)
+	await request_return(db_session, actor.id, loan.id)
 	with pytest.raises(ReturnConditionMissingError):
-		await return_loan(db_session, actor.id, loan.id)
+		await decide_return(
+			db_session, approver.id, loan.id, ApprovalDecision.approved, None
+		)
 
 
 async def test_an_overdue_loan_cannot_be_extended_without_escalation(

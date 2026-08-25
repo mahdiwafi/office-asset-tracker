@@ -12,7 +12,7 @@ from app.models import AuditEvent, LoanCondition, RequestStatus, UserRole
 from app.models.approval import ApprovalDecision
 from app.schemas.request import RequestCreate
 from app.services.approvals import approve_request
-from app.services.loans import extend_loan, return_loan
+from app.services.loans import decide_return, extend_loan, request_return
 from app.services.requests import create_request
 
 
@@ -49,10 +49,14 @@ async def test_approval_records_the_requests_before_state(
 async def test_loan_return_records_the_before_state(
 	db_session, user_factory, asset_factory, loan_factory
 ) -> None:
-	actor = await user_factory()
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
+	borrower = await user_factory(email='borrower@example.com')
 	asset = await asset_factory()
-	loan = await loan_factory(asset, actor, returned=False)
-	await return_loan(db_session, actor.id, loan.id, LoanCondition.good)
+	loan = await loan_factory(asset, borrower, returned=False)
+	await request_return(db_session, borrower.id, loan.id)
+	await decide_return(
+		db_session, approver.id, loan.id, ApprovalDecision.approved, LoanCondition.good
+	)
 	event = await _latest_event(db_session, 'loan.return', loan.id)
 	assert event.before is not None
 	assert event.before['returned_at'] is None

@@ -2,13 +2,15 @@ import datetime
 
 import pydantic
 
+from app.models.approval import ApprovalDecision
 from app.models.loan import LoanCondition
 
 
-class LoanReturnBody(pydantic.BaseModel):
-	# The returned condition is a named field, like the decision body —
-	# not a bare raw string. The service still refuses a None condition
-	# (400), so the body may be omitted entirely and stay safe.
+class ReturnDecisionBody(pydantic.BaseModel):
+	# Mirrors ApprovalDecisionBody for the request flow: the approver
+	# decides the return and records the returned condition. Approving
+	# without a condition is refused by the service (400).
+	decision: ApprovalDecision
 	condition_in: LoanCondition | None = None
 
 
@@ -30,6 +32,7 @@ class LoanRead(pydantic.BaseModel):
 	start_date: datetime.date
 	due_date: datetime.date
 	returned_at: datetime.datetime | None
+	return_requested_at: datetime.datetime | None
 	condition_out: LoanCondition
 	condition_in: LoanCondition | None
 
@@ -43,5 +46,6 @@ class LoanListItem(pydantic.BaseModel):
 	start_date: datetime.date
 	due_date: datetime.date
 	returned_at: datetime.datetime | None
+	return_requested_at: datetime.datetime | None
 	condition_out: LoanCondition
 	condition_in: LoanCondition | None

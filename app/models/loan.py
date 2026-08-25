@@ -35,6 +35,7 @@ class Loan(Base):
 	start_date: saorm.Mapped[datetime.date] = saorm.mapped_column(sqlalchemy.Date)
 	due_date: saorm.Mapped[datetime.date] = saorm.mapped_column(sqlalchemy.Date)
 	returned_at: saorm.Mapped[datetime.datetime | None] = saorm.mapped_column()
+	return_requested_at: saorm.Mapped[datetime.datetime | None] = saorm.mapped_column()
 	condition_out: saorm.Mapped[LoanCondition] = saorm.mapped_column(
 		sqlalchemy.Enum(LoanCondition, native_enum=False),
 	)

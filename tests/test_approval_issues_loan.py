@@ -16,7 +16,12 @@ from app.schemas.loan import LoanCreate
 from app.schemas.request import RequestCreate
 from app.services.approvals import approve_request
 from app.services.errors import LoanDurationExceededError, LoanOverlapError
-from app.services.loans import MAX_LOAN_DURATION_DAYS, create_loan, return_loan
+from app.services.loans import (
+	MAX_LOAN_DURATION_DAYS,
+	create_loan,
+	decide_return,
+	request_return,
+)
 from app.services.requests import create_request
 
 
@@ -268,10 +273,14 @@ async def test_create_loan_marks_the_asset_loaned(
 async def test_return_loan_restores_asset_availability(
 	db_session, user_factory, asset_factory, loan_factory
 ) -> None:
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
 	actor = await user_factory()
 	asset = await asset_factory()
 	loan = await loan_factory(asset, actor, returned=False)
-	await return_loan(db_session, actor.id, loan.id, LoanCondition.good)
+	await request_return(db_session, actor.id, loan.id)
+	await decide_return(
+		db_session, approver.id, loan.id, ApprovalDecision.approved, LoanCondition.good
+	)
 	asset = await db_session.get(Asset, asset.id)
 	assert asset.status is AssetStatus.available
 
@@ -279,9 +288,13 @@ async def test_return_loan_restores_asset_availability(
 async def test_return_loan_with_damaged_condition_keeps_asset_damaged(
 	db_session, user_factory, asset_factory, loan_factory
 ) -> None:
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
 	actor = await user_factory()
 	asset = await asset_factory()
 	loan = await loan_factory(asset, actor, returned=False)
-	await return_loan(db_session, actor.id, loan.id, LoanCondition.poor)
+	await request_return(db_session, actor.id, loan.id)
+	await decide_return(
+		db_session, approver.id, loan.id, ApprovalDecision.approved, LoanCondition.poor
+	)
 	asset = await db_session.get(Asset, asset.id)
 	assert asset.status is AssetStatus.damaged

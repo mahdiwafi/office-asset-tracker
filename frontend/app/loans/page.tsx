@@ -25,6 +25,7 @@ type Loan = {
 	start_date: string;
 	due_date: string;
 	returned_at: string | null;
+	return_requested_at: string | null;
 	condition_out: string;
 	condition_in: string | null;
 };
@@ -38,11 +39,8 @@ export default function MyLoansPage() {
 	const [me, setMe] = useState<Me | null>(null);
 	const [loans, setLoans] = useState<Loan[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	// The row currently in return mode, its chosen returned condition,
-	// and whether the confirm POST is in flight.
-	const [returningId, setReturningId] = useState<number | null>(null);
-	const [returnCondition, setReturnCondition] = useState('good');
-	const [returnBusy, setReturnBusy] = useState(false);
+	// The row whose return request POST is in flight.
+	const [requestingId, setRequestingId] = useState<number | null>(null);
 
 	useEffect(() => {
 		api('/users/me')
@@ -57,24 +55,20 @@ export default function MyLoansPage() {
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
 	}, [me]);
 
-	async function handleReturn(loanId: number) {
-		if (!me) return;
-		setReturnBusy(true);
+	async function handleRequestReturn(loanId: number) {
+		setRequestingId(loanId);
 		setError(null);
 		try {
-			await api(`/loans/${loanId}/return`, {
-				method: 'POST',
-				body: { condition_in: returnCondition },
-			});
-			setReturningId(null);
-			// Refetch so the row's badge and the KPI counts agree with the
-			// backend (a poor return also flags the asset for repair).
+			// The borrower only asks to return — no condition. An approver
+			// grades the return and closes the loan on the approvals page.
+			await api(`/loans/${loanId}/return`, { method: 'POST' });
+			if (!me) return;
 			const body = await api(`/loans?borrower_id=${me.id}`);
 			setLoans(body.items);
 		} catch (e) {
 			setError(e instanceof ApiError ? e.message : String(e));
 		} finally {
-			setReturnBusy(false);
+			setRequestingId(null);
 		}
 	}
 
@@ -184,42 +178,15 @@ export default function MyLoansPage() {
 													<td className="px-4 py-3">
 														{loan.returned_at ? (
 															<span className="text-gray-300">—</span>
-														) : returningId === loan.id ? (
-															<div className="flex items-center gap-2">
-																<select
-																	value={returnCondition}
-																	onChange={(e) => setReturnCondition(e.target.value)}
-																	className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-																	aria-label="Returned condition"
-																>
-																	<option value="good">good</option>
-																	<option value="fair">fair</option>
-																	<option value="poor">poor</option>
-																</select>
-																<Button
-																	variant="success"
-																	busy={returnBusy}
-																	onClick={() => handleReturn(loan.id)}
-																>
-																	Confirm
-																</Button>
-																<Button
-																	variant="secondary"
-																	disabled={returnBusy}
-																	onClick={() => setReturningId(null)}
-																>
-																	Cancel
-																</Button>
-															</div>
+														) : loan.return_requested_at ? (
+															<Badge tone="amber">Return requested</Badge>
 														) : (
 															<Button
 																variant="secondary"
-																onClick={() => {
-																	setReturningId(loan.id);
-																	setReturnCondition('good');
-																}}
+																busy={requestingId === loan.id}
+																onClick={() => handleRequestReturn(loan.id)}
 															>
-																Return
+																Request return
 															</Button>
 														)}
 													</td>

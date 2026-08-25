@@ -4,8 +4,9 @@ import sqlalchemy
 import sqlalchemy.orm as saorm
 from sqlalchemy.orm import selectinload
 
-from app.models import Asset, AssetStatus, Loan, LoanCondition, Request
+from app.models import Asset, AssetStatus, Loan, LoanCondition, Request, User
 from app.models.approval import Approval, ApprovalDecision
+from app.models.user import UserRole
 from app.schemas.loan import LoanCreate
 from app.services.audit import record, snapshot
 from app.services.errors import (
@@ -15,7 +16,10 @@ from app.services.errors import (
 	LoanDurationExceededError,
 	LoanNotFoundError,
 	LoanOverlapError,
+	NoReturnRequestedError,
+	NotAnApproverError,
 	OverdueExtensionError,
+	ReturnAlreadyRequestedError,
 	ReturnConditionMissingError,
 )
 
@@ -127,24 +131,95 @@ async def issue_loan_from_request(
 	return await _finalize_loan(session, actor_id, loan)
 
 
-async def return_loan(
-	session: saorm.Session,
-	actor_id: int,
-	loan_id: int,
-	condition_in: LoanCondition | None = None,
-) -> Loan:
+async def request_return(session: saorm.Session, actor_id: int, loan_id: int) -> Loan:
+	"""First half of the return flow: mark the loan as pending return.
+
+	The borrower (or an approver acting on their behalf) requests the
+	return without recording a condition — the borrower does not grade
+	their own return. The loan stays active until an approver decides."""
 	loan: Loan | None = await session.get(Loan, loan_id)
 	if loan is None:
 		raise LoanNotFoundError(f'loan {loan_id} not found')
-	if condition_in is None:
-		raise ReturnConditionMissingError(
-			f'returning loan {loan_id} requires recording the returned condition'
-		)
 	if loan.returned_at is not None:
 		raise LoanAlreadyReturnedError(f'loan {loan_id} is already returned')
+	if loan.return_requested_at is not None:
+		raise ReturnAlreadyRequestedError(
+			f'loan {loan_id} already has a pending return'
+		)
+	actor: User | None = await session.get(User, actor_id)
+	is_approver: bool = actor is not None and actor.role in (
+		UserRole.approver,
+		UserRole.admin,
+	)
+	if actor_id != loan.borrower_id and not is_approver:
+		raise NotAnApproverError(
+			f'user {actor_id} cannot request a return on loan {loan_id}'
+		)
+	before = snapshot(loan)
+	loan.return_requested_at = datetime.datetime.now()
+	await session.flush()
+	await record(
+		session,
+		actor_id=actor_id,
+		action='loan.return_requested',
+		entity_type='loan',
+		entity_id=loan.id,
+		before=before,
+		after=snapshot(loan),
+	)
+	return loan
+
+
+async def decide_return(
+	session: saorm.Session,
+	approver_id: int,
+	loan_id: int,
+	decision: ApprovalDecision,
+	condition_in: LoanCondition | None = None,
+) -> Loan:
+	"""Second half of the return flow: an approver closes the loan.
+
+	Approving records the returned condition (the approver grades the
+	return) and brings the asset back to the pool — a poor condition
+	flags it for repair instead. Declining cancels the pending request
+	and keeps the loan active."""
+	approver: User | None = await session.get(User, approver_id)
+	if approver is None:
+		raise NotAnApproverError(f'user {approver_id} not found')
+	if approver.role not in (UserRole.approver, UserRole.admin):
+		raise NotAnApproverError(
+			f'user {approver_id} with role {approver.role.value} cannot decide returns'
+		)
+	loan: Loan | None = await session.get(Loan, loan_id)
+	if loan is None:
+		raise LoanNotFoundError(f'loan {loan_id} not found')
+	if loan.returned_at is not None:
+		raise LoanAlreadyReturnedError(f'loan {loan_id} is already returned')
+	if loan.return_requested_at is None:
+		raise NoReturnRequestedError(f'loan {loan_id} has no return request to decide')
+	if decision is ApprovalDecision.declined:
+		before = snapshot(loan)
+		loan.return_requested_at = None
+		await session.flush()
+		await record(
+			session,
+			actor_id=approver_id,
+			action='loan.return_declined',
+			entity_type='loan',
+			entity_id=loan.id,
+			before=before,
+			after=snapshot(loan),
+		)
+		return loan
+	if condition_in is None:
+		raise ReturnConditionMissingError(
+			f'approving the return of loan {loan_id} requires recording '
+			'the returned condition'
+		)
 	before = snapshot(loan)
 	loan.returned_at = datetime.datetime.now()
 	loan.condition_in = condition_in
+	loan.return_requested_at = None
 	await session.flush()
 	asset: Asset | None = await session.get(Asset, loan.asset_id)
 	if asset is not None:
@@ -157,7 +232,7 @@ async def return_loan(
 		)
 	await record(
 		session,
-		actor_id=actor_id,
+		actor_id=approver_id,
 		action='loan.return',
 		entity_type='loan',
 		entity_id=loan.id,
@@ -220,6 +295,7 @@ async def extend_loan(
 async def list_loans(
 	session: saorm.Session,
 	borrower_id: int | None = None,
+	return_requested: bool | None = None,
 	limit: int = 50,
 	offset: int = 0,
 ) -> tuple[list[dict], int]:
@@ -228,6 +304,15 @@ async def list_loans(
 	if borrower_id is not None:
 		query = query.where(Loan.borrower_id == borrower_id)
 		count_query = count_query.where(Loan.borrower_id == borrower_id)
+	if return_requested is not None:
+		# The approvals queue's pending-returns view: loans whose borrower
+		# asked to return them and no one has closed them yet.
+		query = query.where(
+			Loan.return_requested_at.is_not(None), Loan.returned_at.is_(None)
+		)
+		count_query = count_query.where(
+			Loan.return_requested_at.is_not(None), Loan.returned_at.is_(None)
+		)
 	# Eagerly loaded after the Day 3 N+1 checkpoint. Without this, a lazy
 	# loan.asset / loan.borrower load is not just one extra query per row —
 	# in an async session it raises MissingGreenlet (IO outside the greenlet)
@@ -251,6 +336,7 @@ async def list_loans(
 			'start_date': loan.start_date,
 			'due_date': loan.due_date,
 			'returned_at': loan.returned_at,
+			'return_requested_at': loan.return_requested_at,
 			'condition_out': loan.condition_out,
 			'condition_in': loan.condition_in,
 		}

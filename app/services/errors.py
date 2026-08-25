@@ -26,6 +26,14 @@ class LoanAlreadyReturnedError(DomainError):
 	pass
 
 
+class ReturnAlreadyRequestedError(DomainError):
+	pass
+
+
+class NoReturnRequestedError(DomainError):
+	pass
+
+
 class LoanOverlapError(DomainError):
 	pass
 
