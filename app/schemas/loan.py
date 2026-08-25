@@ -5,6 +5,13 @@ import pydantic
 from app.models.loan import LoanCondition
 
 
+class LoanReturnBody(pydantic.BaseModel):
+	# The returned condition is a named field, like the decision body —
+	# not a bare raw string. The service still refuses a None condition
+	# (400), so the body may be omitted entirely and stay safe.
+	condition_in: LoanCondition | None = None
+
+
 class LoanCreate(pydantic.BaseModel):
 	asset_id: int
 	borrower_id: int

@@ -130,8 +130,12 @@ async def test_approval_without_dates_is_consent_only(
 	await approve_request(
 		db_session, approver.id, request.id, ApprovalDecision.approved
 	)
+	# Scoped by asset: the shared dev database may hold real loans from
+	# local app testing — a global count would read them as a leak.
 	loan_count = await db_session.scalar(
-		sqlalchemy.select(sqlalchemy.func.count()).select_from(Loan)
+		sqlalchemy.select(sqlalchemy.func.count())
+		.select_from(Loan)
+		.where(Loan.asset_id == asset.id)
 	)
 	assert loan_count == 0
 	asset = await db_session.get(Asset, asset.id)
@@ -159,7 +163,9 @@ async def test_declined_approval_creates_no_loan(
 		db_session, approver.id, request.id, ApprovalDecision.declined
 	)
 	loan_count = await db_session.scalar(
-		sqlalchemy.select(sqlalchemy.func.count()).select_from(Loan)
+		sqlalchemy.select(sqlalchemy.func.count())
+		.select_from(Loan)
+		.where(Loan.asset_id == asset.id)
 	)
 	assert loan_count == 0
 	asset = await db_session.get(Asset, asset.id)

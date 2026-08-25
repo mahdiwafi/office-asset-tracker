@@ -7,9 +7,9 @@ import sqlalchemy.orm as saorm
 
 from app.api.dependencies import get_current_user
 from app.db import get_db
-from app.models import Loan, LoanCondition, User
+from app.models import Loan, User
 from app.schemas.common import Paginated
-from app.schemas.loan import LoanCreate, LoanListItem, LoanRead
+from app.schemas.loan import LoanCreate, LoanListItem, LoanRead, LoanReturnBody
 from app.services import loans as loan_service
 
 router: fastapi.APIRouter = fastapi.APIRouter(prefix='/loans', tags=['loans'])
@@ -41,12 +41,12 @@ async def list_loans(
 @router.post('/{loan_id}/return', response_model=LoanRead)
 async def return_loan(
 	loan_id: int,
-	condition_in: LoanCondition | None = fastapi.Body(default=None),
+	data: LoanReturnBody = LoanReturnBody(),
 	current_user: User = fastapi.Depends(get_current_user),
 	session: saorm.Session = fastapi.Depends(get_db),
 ) -> Loan:
 	loan = await loan_service.return_loan(
-		session, current_user.id, loan_id, condition_in
+		session, current_user.id, loan_id, data.condition_in
 	)
 	await session.commit()
 	return loan

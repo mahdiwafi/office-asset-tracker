@@ -7,6 +7,7 @@ import sqlalchemy
 
 from app.models import (
 	Asset,
+	AssetStatus,
 	AuditEvent,
 	Category,
 	Loan,
@@ -215,6 +216,35 @@ async def test_return_loan_without_condition_returns_400(
 	assert 'requires recording' in response.json()['detail']
 	loan = await session.get(Loan, loan_id)
 	assert loan.returned_at is None
+
+
+async def test_return_loan_with_condition_restores_the_asset(
+	api_client, bearer_headers
+) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-8')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		session, 'http-borrower5@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	create = await client.post(
+		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
+	)
+	assert create.status_code == 201
+	loan_id = create.json()['id']
+	# The return body is a named field, like the decision body — the
+	# frontend posts {"condition_in": "good"}.
+	response = await client.post(
+		f'/loans/{loan_id}/return', headers=headers, json={'condition_in': 'good'}
+	)
+	assert response.status_code == 200
+	loan = await session.get(Loan, loan_id)
+	assert loan.returned_at is not None
+	assert loan.condition_in is LoanCondition.good
+	asset = await session.get(Asset, asset_id)
+	assert asset.status is AssetStatus.available
 
 
 async def test_loan_longer_than_30_days_returns_422(api_client, bearer_headers) -> None:
