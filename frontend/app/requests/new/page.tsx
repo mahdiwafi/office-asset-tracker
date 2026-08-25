@@ -15,6 +15,7 @@ type Asset = {
 	inventory_tag: string;
 	name: string;
 	status: string;
+	loaned_until: string | null;
 };
 
 type RaisedRequest = {
@@ -133,10 +134,27 @@ export default function RaiseRequestPage() {
 								>
 									{assets.map((asset) => (
 										<option key={asset.id} value={asset.id}>
-											{asset.inventory_tag} — {asset.name} ({asset.status})
+											{asset.inventory_tag} — {asset.name} (
+											{asset.status}
+											{asset.loaned_until
+												? ` until ${asset.loaned_until.slice(0, 10)}`
+												: ''}
+											)
 										</option>
 									))}
 								</select>
+								{(() => {
+									const selected = assets.find(
+										(a) => a.id === Number(assetId)
+									);
+									return selected?.loaned_until ? (
+										<p className="mt-1 text-xs text-amber-700">
+											This asset is on loan until{' '}
+											{selected.loaned_until.slice(0, 10)} — pick a
+											window after that date.
+										</p>
+									) : null;
+								})()}
 							</div>
 							<div>
 								<label

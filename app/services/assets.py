@@ -1,7 +1,9 @@
+import datetime
+
 import sqlalchemy
 import sqlalchemy.orm as saorm
 
-from app.models import Asset, AssetStatus
+from app.models import Asset, AssetStatus, Loan
 from app.schemas.asset import AssetCreate
 from app.services.audit import record, snapshot
 from app.services.errors import (
@@ -93,10 +95,36 @@ async def get_asset(session: saorm.Session, asset_id: int) -> Asset:
 
 async def list_assets(
 	session: saorm.Session, limit: int = 50, offset: int = 0
-) -> tuple[list[Asset], int]:
+) -> tuple[list[dict], int]:
 	query = sqlalchemy.select(Asset).order_by(Asset.inventory_tag)
 	total: int = await session.scalar(
 		sqlalchemy.select(sqlalchemy.func.count()).select_from(Asset)
 	)
 	items = list(await session.scalars(query.limit(limit).offset(offset)))
-	return items, total
+	# One extra query for the page, not one per row: the active loan per
+	# asset (returned_at IS NULL), mapped asset_id -> due date, so a
+	# loaned asset can tell the requester *until when*.
+	active = list(
+		await session.scalars(
+			sqlalchemy.select(Loan).where(
+				Loan.asset_id.in_([asset.id for asset in items]),
+				Loan.returned_at.is_(None),
+			)
+		)
+	)
+	loaned_until: dict[int, datetime.date] = {
+		loan.asset_id: loan.due_date for loan in active
+	}
+	return [
+		{
+			'id': asset.id,
+			'inventory_tag': asset.inventory_tag,
+			'name': asset.name,
+			'serial': asset.serial,
+			'category_id': asset.category_id,
+			'status': asset.status,
+			'condition': asset.condition,
+			'loaned_until': loaned_until.get(asset.id),
+		}
+		for asset in items
+	], total

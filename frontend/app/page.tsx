@@ -18,6 +18,7 @@ type Asset = {
 	serial: string | null;
 	status: string;
 	condition: string;
+	loaned_until: string | null;
 };
 
 export default function AssetListPage() {
@@ -103,6 +104,11 @@ export default function AssetListPage() {
 												</td>
 												<td className="px-4 py-3">
 													<StatusBadge value={asset.status} tones={ASSET_STATUS_TONES} />
+													{asset.loaned_until && (
+														<span className="ml-2 text-xs text-gray-500">
+															until {asset.loaned_until.slice(0, 10)}
+														</span>
+													)}
 												</td>
 												<td className="px-4 py-3">
 													<StatusBadge value={asset.condition} tones={CONDITION_TONES} />

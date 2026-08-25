@@ -122,6 +122,30 @@ async def test_duplicate_inventory_tag_returns_409(api_client, bearer_headers) -
 	assert 'inventory tag' in second.json()['detail']
 
 
+async def test_assets_list_reveals_loaned_until(api_client, bearer_headers) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	loaned_asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-6')
+	free_asset_id = await _seed_asset(session, category_id, 'HTTP-ASSET-7')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		session, 'http-borrower4@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	# One asset goes on loan; the other stays available. The requester's
+	# dropdown must show the loaned asset's return date, not just the
+	# status — otherwise the form is a guessing game (the approvals page
+	# rejects an overlapping window with 409).
+	payload = _loan_payload(loaned_asset_id, borrower_id)
+	created = await client.post('/loans', headers=headers, json=payload)
+	assert created.status_code == 201
+	listing = await client.get('/assets', headers=headers)
+	assert listing.status_code == 200
+	items = {item['id']: item for item in listing.json()['items']}
+	assert items[loaned_asset_id]['loaned_until'] == payload['due_date']
+	assert items[free_asset_id]['loaned_until'] is None
+
+
 async def test_create_loan_returns_201_and_persists(api_client, bearer_headers) -> None:
 	client, session = api_client
 	category_id = await _seed_category(session)
