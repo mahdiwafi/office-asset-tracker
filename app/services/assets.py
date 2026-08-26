@@ -3,19 +3,35 @@ import datetime
 import sqlalchemy
 import sqlalchemy.orm as saorm
 
-from app.models import Asset, AssetStatus, Loan
+from app.models import Asset, AssetCondition, AssetStatus, Loan, User
+from app.models.user import UserRole
 from app.schemas.asset import AssetCreate
 from app.services.audit import record, snapshot
 from app.services.errors import (
 	AssetHasLoanHistoryError,
 	AssetNotFoundError,
+	AssetOnLoanError,
+	AssetPoorConditionError,
+	InvalidAssetStatusTransitionError,
 	InventoryTagTakenError,
+	NotAnApproverError,
 )
 
 
 async def create_asset(
 	session: saorm.Session, actor_id: int, data: AssetCreate
 ) -> Asset:
+	if data.condition is AssetCondition.poor and data.status not in (
+		AssetStatus.damaged,
+		AssetStatus.maintenance,
+	):
+		# The lifecycle rule: poor means the asset is out of the pool —
+		# damaged awaiting repair, or already in maintenance. The catalog
+		# can never show a poor asset as available or loaned.
+		raise AssetPoorConditionError(
+			f'a poor-condition asset starts damaged or in maintenance, '
+			f'not {data.status.value}'
+		)
 	asset: Asset = Asset(
 		inventory_tag=data.inventory_tag,
 		name=data.name,
@@ -45,9 +61,58 @@ async def create_asset(
 async def update_asset_status(
 	session: saorm.Session, actor_id: int, asset_id: int, new_status: AssetStatus
 ) -> Asset:
+	"""Move an asset along the lifecycle — the status endpoint is a state
+	machine, not a free-form write.
+
+	Staff can send an asset to maintenance (never while it is on loan).
+	An asset comes back to the pool only out of maintenance, and the
+	repair resets the recorded condition to good — a poor asset never
+	sits in the pool. Offboarding is an approver's action, blocked on
+	loaned assets, and terminal. Loaning and damage are recorded by
+	their own flows (loan creation, the return decision), never here.
+	"""
 	asset: Asset | None = await session.get(Asset, asset_id)
 	if asset is None:
 		raise AssetNotFoundError(f'asset {asset_id} not found')
+	if new_status is asset.status:
+		# Same status is a no-op: no state change, so no audit event.
+		return asset
+	if asset.status is AssetStatus.offboarded:
+		raise InvalidAssetStatusTransitionError(
+			f'asset {asset_id} is offboarded and cannot change status'
+		)
+	if new_status in (AssetStatus.loaned, AssetStatus.damaged):
+		# Loaning is the loan flow's job (availability gate, overlap
+		# exclusion); damage is recorded by the return decision (the
+		# inspection). Neither is a status write.
+		raise InvalidAssetStatusTransitionError(
+			f'asset {asset_id} cannot be set to {new_status.value} via the '
+			'status endpoint'
+		)
+	if new_status is AssetStatus.available:
+		# The repair path: the pool is reached only out of maintenance,
+		# and the repair resets the grade, so status and condition stay
+		# coherent (the catalog can never show a poor asset available).
+		if asset.status is not AssetStatus.maintenance:
+			raise InvalidAssetStatusTransitionError(
+				f'asset {asset_id} is {asset.status.value}; only a '
+				'maintenance asset returns to available'
+			)
+		asset.condition = AssetCondition.good
+	if new_status is AssetStatus.offboarded:
+		actor: User | None = await session.get(User, actor_id)
+		if actor is None or actor.role not in (UserRole.approver, UserRole.admin):
+			raise NotAnApproverError(
+				f'user {actor_id} cannot offboard asset {asset_id}'
+			)
+		if asset.status is AssetStatus.loaned:
+			raise AssetOnLoanError(
+				f'asset {asset_id} is on loan and cannot be offboarded'
+			)
+	if new_status is AssetStatus.maintenance and asset.status is AssetStatus.loaned:
+		raise AssetOnLoanError(
+			f'asset {asset_id} is on loan and cannot be sent to maintenance'
+		)
 	before: dict = snapshot(asset)
 	asset.status = new_status
 	await session.flush()

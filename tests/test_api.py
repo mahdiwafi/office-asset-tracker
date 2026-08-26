@@ -623,3 +623,71 @@ async def test_cors_preflight_allows_frontend_origin(api_client) -> None:
 	)
 	assert response.status_code == 200
 	assert response.headers['access-control-allow-origin'] == 'http://localhost:3000'
+
+
+async def test_staff_can_send_an_asset_to_maintenance_over_http(
+	api_client, bearer_headers
+) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	oid = _next_oid()
+	await _seed_user(session, 'lifecycle-staff@example.com', UserRole.staff, oid)
+	created = await client.post(
+		'/assets',
+		headers=bearer_headers(oid),
+		json={
+			'inventory_tag': 'HTTP-LIFE-1',
+			'name': 'ThinkPad X1',
+			'category_id': category_id,
+		},
+	)
+	assert created.status_code == 201
+	asset_id = created.json()['id']
+	# The status endpoint takes the bare enum string, like the extend body.
+	response = await client.patch(
+		f'/assets/{asset_id}/status',
+		headers=bearer_headers(oid),
+		json='maintenance',
+	)
+	assert response.status_code == 200
+	assert response.json()['status'] == 'maintenance'
+	asset = await session.get(Asset, asset_id)
+	assert asset is not None
+	assert asset.status is AssetStatus.maintenance
+
+
+async def test_a_loaned_asset_cannot_be_sent_to_maintenance_over_http(
+	api_client, bearer_headers
+) -> None:
+	client, _session = api_client
+	category_id = await _seed_category(_session)
+	asset_id = await _seed_asset(_session, category_id, 'HTTP-LIFE-2')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		_session, 'lifecycle-borrower@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	created = await client.post(
+		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
+	)
+	assert created.status_code == 201
+	response = await client.patch(
+		f'/assets/{asset_id}/status', headers=headers, json='maintenance'
+	)
+	assert response.status_code == 409
+	assert 'on loan' in response.json()['detail']
+
+
+async def test_staff_cannot_offboard_an_asset_over_http(
+	api_client, bearer_headers
+) -> None:
+	client, _session = api_client
+	category_id = await _seed_category(_session)
+	asset_id = await _seed_asset(_session, category_id, 'HTTP-LIFE-3')
+	oid = _next_oid()
+	await _seed_user(_session, 'lifecycle-staff2@example.com', UserRole.staff, oid)
+	response = await client.patch(
+		f'/assets/{asset_id}/status', headers=bearer_headers(oid), json='offboarded'
+	)
+	assert response.status_code == 403
+	assert 'cannot offboard' in response.json()['detail']

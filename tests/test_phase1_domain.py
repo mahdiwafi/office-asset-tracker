@@ -211,5 +211,7 @@ async def test_an_asset_state_change_cannot_commit_without_an_audit_entry(
 ) -> None:
 	actor = await user_factory()
 	asset = await asset_factory()
-	await update_asset_status(db_session, actor.id, asset.id, AssetStatus.damaged)
+	# Maintenance is the legal status write since the lifecycle rules; the
+	# point of this test is the audit coupling, not the target value.
+	await update_asset_status(db_session, actor.id, asset.id, AssetStatus.maintenance)
 	assert await audit_count(entity_type='asset', entity_id=asset.id) == 1

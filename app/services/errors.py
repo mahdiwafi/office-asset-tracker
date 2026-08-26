@@ -14,6 +14,18 @@ class AssetUnavailableError(DomainError):
 	pass
 
 
+class AssetOnLoanError(DomainError):
+	pass
+
+
+class AssetPoorConditionError(DomainError):
+	pass
+
+
+class InvalidAssetStatusTransitionError(DomainError):
+	pass
+
+
 class AssetHasLoanHistoryError(DomainError):
 	pass
 

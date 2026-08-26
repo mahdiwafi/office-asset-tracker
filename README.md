@@ -47,7 +47,7 @@ flowchart LR
 
 | Screen | What it does |
 | --- | --- |
-| Asset catalog | Inventory with status, condition, and per-item pages |
+| Asset catalog | Inventory with status, condition, per-item pages, and lifecycle actions — staff send items to maintenance, approvers offboard, the repair restores them to the pool |
 | Raise request | Loan requests with justification; approvers decide with full history |
 | Approvals | Manager/ICT queues for requests and returns; approving commits four writes atomically; the return decision records the returned condition |
 | My loans | Active loans with due dates, renewal, and a request-return flow — the approver grades the return |
@@ -72,7 +72,7 @@ Captured from the live site (sign-in is Entra-gated, so they are taken by hand).
 
 ## Testing approach
 
-The suite is hermetic: **135 tests** run in CI against a real Postgres 16 (service container) with every external provider faked at our boundary — JWT validation against locally minted tokens and a mocked JWKS, the search client and the LLM HTTP call replaced by fakes that pin the wire contract (a provider mismatch fails the test, not a live 500). The race-condition and transaction-boundary tests are the ones the plan refused to skip: they prove the database constraints, not just the happy path.
+The suite is hermetic: **152 tests** run in CI against a real Postgres 16 (service container) with every external provider faked at our boundary — JWT validation against locally minted tokens and a mocked JWKS, the search client and the LLM HTTP call replaced by fakes that pin the wire contract (a provider mismatch fails the test, not a live 500). The race-condition and transaction-boundary tests are the ones the plan refused to skip: they prove the database constraints, not just the happy path.
 
 CI gates: `ruff check`, `ruff format --check`, `pytest` (with migrations applied), plus a production `next build`.
 
@@ -109,7 +109,7 @@ The assistant needs Azure AI Search (`AI_SEARCH_ENDPOINT`/`AI_SEARCH_KEY`) and, 
 
 ## Documentation
 
-- `docs/adr/` — architectural decisions (stack, concurrency, hosting, RAG, evaluation, return approvals)
+- `docs/adr/` — architectural decisions (stack, concurrency, hosting, RAG, evaluation, return approvals, asset lifecycle)
 - `docs/plan.md` — the seven-day build schedule and its rationale
 - `docs/learning-log.md` — what was built, what broke, and the fix, per session
 - `docs/golden-set.md` — the assistant's manual evaluation set
