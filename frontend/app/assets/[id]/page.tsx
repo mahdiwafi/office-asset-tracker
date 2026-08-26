@@ -6,11 +6,17 @@ import { useEffect, useState } from 'react';
 
 import { ApiError, api } from '@/lib/api';
 import { ASSET_STATUS_TONES, CONDITION_TONES, StatusBadge } from '../../components/badge';
+import { Button } from '../../components/button';
 import { Card } from '../../components/card';
 import { Alert, LoadingState } from '../../components/feedback';
-import { ArrowLeft } from '../../components/icons';
+import { ArrowLeft, Check, X } from '../../components/icons';
 import { PageHeader } from '../../components/page-header';
 import { RequireAuth } from '../../components/require-auth';
+
+type Me = {
+	id: number;
+	role: string;
+};
 
 type Asset = {
 	id: number;
@@ -22,16 +28,47 @@ type Asset = {
 	condition: string;
 };
 
+const APPROVER_ROLES = ['approver', 'admin'];
+
 export default function AssetDetailPage() {
 	const { id } = useParams<{ id: string }>();
 	const [asset, setAsset] = useState<Asset | null>(null);
+	const [me, setMe] = useState<Me | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [acting, setActing] = useState<string | null>(null);
 
 	useEffect(() => {
 		api(`/assets/${id}`)
 			.then((body) => setAsset(body))
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
 	}, [id]);
+
+	useEffect(() => {
+		// The lifecycle actions differ by role: any staff can send an
+		// asset to maintenance, only approvers can offboard.
+		api('/users/me')
+			.then((body) => setMe(body))
+			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
+	}, []);
+
+	async function changeStatus(newStatus: string) {
+		setActing(newStatus);
+		setError(null);
+		try {
+			// The status endpoint takes the bare enum string as the body.
+			const updated = await api(`/assets/${asset?.id}/status`, {
+				method: 'PATCH',
+				body: newStatus,
+			});
+			setAsset(updated);
+		} catch (e) {
+			setError(e instanceof ApiError ? e.message : String(e));
+		} finally {
+			setActing(null);
+		}
+	}
+
+	const isApprover = me ? APPROVER_ROLES.includes(me.role) : false;
 
 	return (
 		<RequireAuth>
@@ -47,7 +84,7 @@ export default function AssetDetailPage() {
 				</p>
 				<PageHeader title="Asset detail" description={asset?.name} />
 				{error && (
-					<Alert tone="red" title="Could not load this asset">
+					<Alert tone="red" title="Could not update this asset">
 						{error}
 					</Alert>
 				)}
@@ -86,6 +123,51 @@ export default function AssetDetailPage() {
 								</dd>
 							</div>
 						</dl>
+						{asset.status !== 'offboarded' && (
+							<div className="mt-6 flex flex-wrap gap-2 border-t border-gray-100 pt-5">
+								{asset.status !== 'maintenance' && (
+									<Button
+										variant="secondary"
+										busy={acting === 'maintenance'}
+										disabled={asset.status === 'loaned'}
+										title={
+											asset.status === 'loaned'
+												? 'Return the loan before sending it to maintenance'
+												: 'Flag this asset as in for repair'
+										}
+										onClick={() => changeStatus('maintenance')}
+									>
+										Send to maintenance
+									</Button>
+								)}
+								{asset.status === 'maintenance' && (
+									<Button
+										variant="success"
+										busy={acting === 'available'}
+										onClick={() => changeStatus('available')}
+									>
+										<Check className="h-4 w-4" />
+										Repair (back to available)
+									</Button>
+								)}
+								{isApprover && (
+									<Button
+										variant="danger"
+										busy={acting === 'offboarded'}
+										disabled={asset.status === 'loaned'}
+										title={
+											asset.status === 'loaned'
+												? 'Return the loan before offboarding'
+												: 'Retire this asset permanently'
+										}
+										onClick={() => changeStatus('offboarded')}
+									>
+										<X className="h-4 w-4" />
+										Offboard
+									</Button>
+								)}
+							</div>
+						)}
 					</Card>
 				)}
 			</main>

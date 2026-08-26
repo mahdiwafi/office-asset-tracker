@@ -15,6 +15,7 @@ export function Button({
 	disabled,
 	busy = false,
 	onClick,
+	title,
 	children,
 }: {
 	variant?: keyof typeof VARIANTS;
@@ -22,6 +23,8 @@ export function Button({
 	disabled?: boolean;
 	busy?: boolean;
 	onClick?: () => void;
+	// Native tooltip, e.g. to explain why a lifecycle action is disabled.
+	title?: string;
 	children: ReactNode;
 }) {
 	return (
@@ -29,6 +32,7 @@ export function Button({
 			type={type}
 			onClick={onClick}
 			disabled={disabled || busy}
+			title={title}
 			className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]}`}
 		>
 			{busy && <Spinner className="h-4 w-4" />}
