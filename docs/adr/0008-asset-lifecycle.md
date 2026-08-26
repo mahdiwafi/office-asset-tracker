@@ -89,5 +89,31 @@ The full cycle, end to end: a poor return puts the asset in
   guard, approver-only offboard, terminal offboard, repair-only
   return-to-pool, repair resets condition, poor-create rejection,
   no-op not audited, missing asset), HTTP-level tests cover the
-  contract and the `403`/`409`s, and one test proves the CHECK
-  constraint rejects a poor `available` asset at the database layer.
+  contract and the `403`/`409`s, and tests prove both CHECK
+  constraints reject illegal pairs at the database layer.
+
+## Amendment (2026-08-26) — the invariant is two-way
+
+The original decision pinned only one direction: *poor ⇒ damaged or
+maintenance*. That left a gap the seed data walked through — an asset
+seeded `damaged` while graded `fair` — which is incoherent on its
+face: in this product, damage is *recorded* by the return decision
+(the inspection), and the inspection grades poor. A damaged asset can
+never be fair.
+
+The invariant is now both directions, enforced at the same three
+layers:
+
+1. **`condition = poor` ⇒ `status ∈ {damaged, maintenance}`**
+   (unchanged, `ck_assets_poor_condition_status`).
+2. **`status = damaged` ⇒ `condition = poor`** (`ck_assets_damaged_is_poor`).
+   A damaged asset is always graded poor; the repair queue (`maintenance`)
+   may carry any grade, and the repair resets it to `good` on the way
+   back to the pool.
+
+The migration aligns existing rows before adding the constraint
+(seed-created `damaged`+`fair` rows become `damaged`+`poor`), and
+creation rejects a damaged asset graded fair or better
+(`AssetPoorConditionError`, `409`). The return decision already wrote
+the pair together, so no flow code changed — only the seed, the
+backstop, and the guard.

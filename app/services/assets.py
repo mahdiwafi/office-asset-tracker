@@ -32,6 +32,15 @@ async def create_asset(
 			f'a poor-condition asset starts damaged or in maintenance, '
 			f'not {data.status.value}'
 		)
+	if data.status is AssetStatus.damaged and data.condition is not (
+		AssetCondition.poor
+	):
+		# And the reverse: damage is always a poor grade. The return
+		# decision (the inspection) writes the two together, so a damaged
+		# asset cannot be created as fair or better.
+		raise AssetPoorConditionError(
+			f'a damaged asset must be graded poor, not {data.condition.value}'
+		)
 	asset: Asset = Asset(
 		inventory_tag=data.inventory_tag,
 		name=data.name,

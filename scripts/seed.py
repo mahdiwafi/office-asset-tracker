@@ -35,7 +35,8 @@ ASSETS: list[tuple[str, str, str, str, str, str]] = [
 		'maintenance',
 		'poor',
 	),
-	('IT-0007', 'iPad Pro 11', 'DLXWY1KP', 'Phone', 'damaged', 'fair'),
+	# Damaged is always graded poor — the two-way lifecycle rule.
+	('IT-0007', 'iPad Pro 11', 'DLXWY1KP', 'Phone', 'damaged', 'poor'),
 ]
 
 

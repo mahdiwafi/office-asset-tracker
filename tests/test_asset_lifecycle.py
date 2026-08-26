@@ -2,6 +2,9 @@
 # The asset lifecycle is a state machine, not free-form writes:
 #   - poor condition implies damaged or maintenance — a poor asset can
 #     never sit in the pool (available/loaned), at any layer
+#   - and the reverse: a damaged asset is always graded poor — the
+#     return decision writes the two together, so the catalog cannot
+#     show a damaged-but-fair unit (seed included)
 #   - any staff member can send an item to maintenance (not while on loan)
 #   - an asset returns to the pool only out of maintenance, and the
 #     repair resets the recorded condition to good
@@ -96,8 +99,11 @@ async def test_an_asset_returns_to_available_only_out_of_maintenance(
 ) -> None:
 	staff = await user_factory(email='staff@example.com')
 	# A damaged asset cannot skip the repair queue: the return-to-pool
-	# path goes through maintenance.
-	damaged = await asset_factory(status=AssetStatus.damaged)
+	# path goes through maintenance. (And per the two-way rule, a damaged
+	# asset is graded poor.)
+	damaged = await asset_factory(
+		status=AssetStatus.damaged, condition=AssetCondition.poor
+	)
 	with pytest.raises(InvalidAssetStatusTransitionError):
 		await update_asset_status(
 			db_session, staff.id, damaged.id, AssetStatus.available
@@ -156,6 +162,49 @@ async def test_a_poor_asset_can_be_created_as_maintenance(
 		),
 	)
 	assert asset.status is AssetStatus.maintenance
+	assert asset.condition is AssetCondition.poor
+
+
+async def test_a_damaged_asset_cannot_be_created_as_fair(
+	db_session, user_factory, category_factory
+) -> None:
+	staff = await user_factory(email='staff@example.com')
+	category = await category_factory()
+	# The invariant is two-way: damage is always a poor grade, so a
+	# damaged asset cannot be created as fair or better.
+	with pytest.raises(AssetPoorConditionError):
+		await create_asset(
+			db_session,
+			staff.id,
+			AssetCreate(
+				inventory_tag='IT-9996',
+				name='Flagged iPad',
+				category_id=category.id,
+				status=AssetStatus.damaged,
+				condition=AssetCondition.fair,
+			),
+		)
+
+
+async def test_a_damaged_asset_can_be_created_as_poor(
+	db_session, user_factory, category_factory
+) -> None:
+	staff = await user_factory(email='staff@example.com')
+	category = await category_factory()
+	# The poor return writes damaged + poor together (the inspection);
+	# creation allows the same pair, and nothing else.
+	asset = await create_asset(
+		db_session,
+		staff.id,
+		AssetCreate(
+			inventory_tag='IT-9995',
+			name='Shattered iPad',
+			category_id=category.id,
+			status=AssetStatus.damaged,
+			condition=AssetCondition.poor,
+		),
+	)
+	assert asset.status is AssetStatus.damaged
 	assert asset.condition is AssetCondition.poor
 
 
@@ -218,6 +267,27 @@ async def test_the_database_rejects_a_poor_available_asset(
 			category_id=category.id,
 			status=AssetStatus.available,
 			condition=AssetCondition.poor,
+		)
+	)
+	with pytest.raises(sqlalchemy.exc.IntegrityError):
+		await db_session.flush()
+
+
+async def test_the_database_rejects_a_damaged_fair_asset(
+	db_session, category_factory
+) -> None:
+	# The other half of the lifecycle backstop: a direct ORM write cannot
+	# flag an asset damaged while it is graded anything but poor.
+	import sqlalchemy
+
+	category = await category_factory()
+	db_session.add(
+		Asset(
+			inventory_tag='IT-9994',
+			name='Flagged iPad',
+			category_id=category.id,
+			status=AssetStatus.damaged,
+			condition=AssetCondition.fair,
 		)
 	)
 	with pytest.raises(sqlalchemy.exc.IntegrityError):

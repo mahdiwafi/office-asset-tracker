@@ -72,7 +72,7 @@ Captured from the live site (sign-in is Entra-gated, so they are taken by hand).
 
 ## Testing approach
 
-The suite is hermetic: **152 tests** run in CI against a real Postgres 16 (service container) with every external provider faked at our boundary — JWT validation against locally minted tokens and a mocked JWKS, the search client and the LLM HTTP call replaced by fakes that pin the wire contract (a provider mismatch fails the test, not a live 500). The race-condition and transaction-boundary tests are the ones the plan refused to skip: they prove the database constraints, not just the happy path.
+The suite is hermetic: **155 tests** run in CI against a real Postgres 16 (service container) with every external provider faked at our boundary — JWT validation against locally minted tokens and a mocked JWKS, the search client and the LLM HTTP call replaced by fakes that pin the wire contract (a provider mismatch fails the test, not a live 500). The race-condition and transaction-boundary tests are the ones the plan refused to skip: they prove the database constraints, not just the happy path.
 
 CI gates: `ruff check`, `ruff format --check`, `pytest` (with migrations applied), plus a production `next build`.
 
