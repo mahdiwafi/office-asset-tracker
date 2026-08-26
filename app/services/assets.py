@@ -73,12 +73,14 @@ async def update_asset_status(
 	"""Move an asset along the lifecycle — the status endpoint is a state
 	machine, not a free-form write.
 
-	Staff can send an asset to maintenance (never while it is on loan).
+	The repair queue is the ICT team's job: sending to maintenance,
+	repairing, and offboarding are approver actions (never while the
+	asset is on loan); staff can loan and return, not run the queue.
 	An asset comes back to the pool only out of maintenance, and the
 	repair resets the recorded condition to good — a poor asset never
-	sits in the pool. Offboarding is an approver's action, blocked on
-	loaned assets, and terminal. Loaning and damage are recorded by
-	their own flows (loan creation, the return decision), never here.
+	sits in the pool. Offboarding is terminal. Loaning and damage are
+	recorded by their own flows (loan creation, the return decision),
+	never here.
 	"""
 	asset: Asset | None = await session.get(Asset, asset_id)
 	if asset is None:
@@ -98,6 +100,19 @@ async def update_asset_status(
 			f'asset {asset_id} cannot be set to {new_status.value} via the '
 			'status endpoint'
 		)
+	if new_status in (
+		AssetStatus.maintenance,
+		AssetStatus.available,
+		AssetStatus.offboarded,
+	):
+		# The repair queue is the ICT team's job: sending to maintenance,
+		# repairing, and retiring are approver actions — staff can loan
+		# and return, not run the queue.
+		actor: User | None = await session.get(User, actor_id)
+		if actor is None or actor.role not in (UserRole.approver, UserRole.admin):
+			raise NotAnApproverError(
+				f'user {actor_id} cannot set asset {asset_id} to {new_status.value}'
+			)
 	if new_status is AssetStatus.available:
 		# The repair path: the pool is reached only out of maintenance,
 		# and the repair resets the grade, so status and condition stay
@@ -108,16 +123,8 @@ async def update_asset_status(
 				'maintenance asset returns to available'
 			)
 		asset.condition = AssetCondition.good
-	if new_status is AssetStatus.offboarded:
-		actor: User | None = await session.get(User, actor_id)
-		if actor is None or actor.role not in (UserRole.approver, UserRole.admin):
-			raise NotAnApproverError(
-				f'user {actor_id} cannot offboard asset {asset_id}'
-			)
-		if asset.status is AssetStatus.loaned:
-			raise AssetOnLoanError(
-				f'asset {asset_id} is on loan and cannot be offboarded'
-			)
+	if new_status is AssetStatus.offboarded and asset.status is AssetStatus.loaned:
+		raise AssetOnLoanError(f'asset {asset_id} is on loan and cannot be offboarded')
 	if new_status is AssetStatus.maintenance and asset.status is AssetStatus.loaned:
 		raise AssetOnLoanError(
 			f'asset {asset_id} is on loan and cannot be sent to maintenance'

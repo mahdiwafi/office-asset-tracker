@@ -5,11 +5,12 @@
 #   - and the reverse: a damaged asset is always graded poor — the
 #     return decision writes the two together, so the catalog cannot
 #     show a damaged-but-fair unit (seed included)
-#   - any staff member can send an item to maintenance (not while on loan)
+#   - the repair queue is the ICT team's job: sending to maintenance,
+#     repairing, and offboarding are approver actions — staff can loan
+#     and return, not run the queue (blocked on loaned assets)
 #   - an asset returns to the pool only out of maintenance, and the
 #     repair resets the recorded condition to good
-#   - offboarding is an approver's action, is blocked on loaned assets,
-#     and is terminal
+#   - offboarding is blocked on loaned assets and is terminal
 #   - loaning and damage are recorded by their own flows (the loan
 #     creation and the return decision), never by a status write
 # Each test name is one rule.
@@ -32,12 +33,14 @@ from app.services.errors import (
 )
 
 
-async def test_staff_can_send_an_asset_to_maintenance(
+async def test_an_approver_can_send_an_asset_to_maintenance(
 	db_session, user_factory, asset_factory, audit_count
 ) -> None:
-	staff = await user_factory(email='staff@example.com')
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
 	asset = await asset_factory()
-	await update_asset_status(db_session, staff.id, asset.id, AssetStatus.maintenance)
+	await update_asset_status(
+		db_session, approver.id, asset.id, AssetStatus.maintenance
+	)
 	asset = await db_session.get(Asset, asset.id)
 	assert asset.status is AssetStatus.maintenance
 	# Maintenance does not re-grade the asset — a fair mouse stays fair.
@@ -45,19 +48,32 @@ async def test_staff_can_send_an_asset_to_maintenance(
 	assert await audit_count(entity_type='asset', entity_id=asset.id) == 1
 
 
-async def test_a_loaned_asset_cannot_be_sent_to_maintenance(
-	db_session, user_factory, asset_factory, loan_factory
+async def test_a_staff_member_cannot_send_an_asset_to_maintenance(
+	db_session, user_factory, asset_factory
 ) -> None:
 	staff = await user_factory(email='staff@example.com')
 	asset = await asset_factory()
-	await loan_factory(asset, staff, returned=False)
+	# The repair queue is the ICT team's job: staff can loan and return,
+	# they cannot move items into maintenance.
+	with pytest.raises(NotAnApproverError):
+		await update_asset_status(
+			db_session, staff.id, asset.id, AssetStatus.maintenance
+		)
+
+
+async def test_a_loaned_asset_cannot_be_sent_to_maintenance(
+	db_session, user_factory, asset_factory, loan_factory
+) -> None:
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
+	asset = await asset_factory()
+	await loan_factory(asset, approver, returned=False)
 	# loan_factory inserts the loan row directly, so it never flips the
 	# asset — mirror the real world by marking it loaned in the setup.
 	asset.status = AssetStatus.loaned
 	await db_session.flush()
 	with pytest.raises(AssetOnLoanError):
 		await update_asset_status(
-			db_session, staff.id, asset.id, AssetStatus.maintenance
+			db_session, approver.id, asset.id, AssetStatus.maintenance
 		)
 
 
@@ -97,7 +113,7 @@ async def test_an_offboarded_asset_is_terminal(
 async def test_an_asset_returns_to_available_only_out_of_maintenance(
 	db_session, user_factory, asset_factory
 ) -> None:
-	staff = await user_factory(email='staff@example.com')
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
 	# A damaged asset cannot skip the repair queue: the return-to-pool
 	# path goes through maintenance. (And per the two-way rule, a damaged
 	# asset is graded poor.)
@@ -106,24 +122,36 @@ async def test_an_asset_returns_to_available_only_out_of_maintenance(
 	)
 	with pytest.raises(InvalidAssetStatusTransitionError):
 		await update_asset_status(
-			db_session, staff.id, damaged.id, AssetStatus.available
+			db_session, approver.id, damaged.id, AssetStatus.available
 		)
 
 
-async def test_repair_returns_the_asset_available_with_good_condition(
+async def test_an_approver_can_repair_an_asset_back_to_available(
 	db_session, user_factory, asset_factory, audit_count
 ) -> None:
-	staff = await user_factory(email='staff@example.com')
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
 	# A poor dock in for repair: the poor grade is what put it here.
 	asset = await asset_factory(
 		status=AssetStatus.maintenance, condition=AssetCondition.poor
 	)
-	await update_asset_status(db_session, staff.id, asset.id, AssetStatus.available)
+	await update_asset_status(db_session, approver.id, asset.id, AssetStatus.available)
 	asset = await db_session.get(Asset, asset.id)
 	assert asset.status is AssetStatus.available
 	# The repair resets the grade: the pool never holds a poor asset.
 	assert asset.condition is AssetCondition.good
 	assert await audit_count(entity_type='asset', entity_id=asset.id) == 1
+
+
+async def test_a_staff_member_cannot_repair_an_asset(
+	db_session, user_factory, asset_factory
+) -> None:
+	staff = await user_factory(email='staff@example.com')
+	asset = await asset_factory(
+		status=AssetStatus.maintenance, condition=AssetCondition.poor
+	)
+	# The repair is an approver's action, not a staff one.
+	with pytest.raises(NotAnApproverError):
+		await update_asset_status(db_session, staff.id, asset.id, AssetStatus.available)
 
 
 async def test_a_poor_asset_cannot_be_created_as_available(

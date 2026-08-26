@@ -209,9 +209,9 @@ async def test_an_overdue_loan_cannot_be_extended_without_escalation(
 async def test_an_asset_state_change_cannot_commit_without_an_audit_entry(
 	db_session, user_factory, asset_factory, audit_count
 ) -> None:
-	actor = await user_factory()
+	# The lifecycle status write is an approver action since the rule
+	# change; the point of this test is the audit coupling, not the actor.
+	actor = await user_factory(role=UserRole.approver)
 	asset = await asset_factory()
-	# Maintenance is the legal status write since the lifecycle rules; the
-	# point of this test is the audit coupling, not the target value.
 	await update_asset_status(db_session, actor.id, asset.id, AssetStatus.maintenance)
 	assert await audit_count(entity_type='asset', entity_id=asset.id) == 1

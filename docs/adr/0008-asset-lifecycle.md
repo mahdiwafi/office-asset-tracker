@@ -117,3 +117,20 @@ creation rejects a damaged asset graded fair or better
 (`AssetPoorConditionError`, `409`). The return decision already wrote
 the pair together, so no flow code changed — only the seed, the
 backstop, and the guard.
+
+## Amendment (2026-08-26) — the repair queue is approver-only
+
+The original decision (and the first amendment) left sending to
+maintenance open to any staff member — the candidate's original rule,
+*"any item to maintenance by staff"*. That changed: **staff can loan
+and return; the repair queue is the ICT team's job.** Sending to
+maintenance, repairing (`maintenance` → `available`), and offboarding
+are approver actions (`NotAnApproverError`, `403`), superseding item
+2's "any staff member" and item 3's maintenance button.
+
+The role gate is one check over the three management targets, placed
+before the state checks — a staff member never learns the transition
+rules, and the same error maps to `403` for maintenance, repair, and
+retirement. The state machine itself is unchanged: the full cycle
+(poor return → `damaged` → `maintenance` → `available` + `good`)
+still holds, run by approvers end to end.

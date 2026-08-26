@@ -44,8 +44,9 @@ export default function AssetDetailPage() {
 	}, [id]);
 
 	useEffect(() => {
-		// The lifecycle actions differ by role: any staff can send an
-		// asset to maintenance, only approvers can offboard.
+		// The lifecycle actions are the ICT team's job: sending to
+		// maintenance, repairing, and offboarding are approver actions —
+		// staff can loan and return.
 		api('/users/me')
 			.then((body) => setMe(body))
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
@@ -123,7 +124,7 @@ export default function AssetDetailPage() {
 								</dd>
 							</div>
 						</dl>
-						{asset.status !== 'offboarded' && (
+						{isApprover && asset.status !== 'offboarded' && (
 							<div className="mt-6 flex flex-wrap gap-2 border-t border-gray-100 pt-5">
 								{asset.status !== 'maintenance' && (
 									<Button
