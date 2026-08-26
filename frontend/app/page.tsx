@@ -5,9 +5,10 @@ import { useEffect, useState } from 'react';
 
 import { ApiError, api } from '@/lib/api';
 import { ASSET_STATUS_TONES, CONDITION_TONES, StatusBadge } from './components/badge';
+import { Button } from './components/button';
 import { Card, StatCard } from './components/card';
 import { Alert, EmptyState, LoadingState } from './components/feedback';
-import { Box, Calendar, Check, Info } from './components/icons';
+import { ArrowRight, Box, Calendar, Check, Info } from './components/icons';
 import { PageHeader } from './components/page-header';
 import { RequireAuth } from './components/require-auth';
 
@@ -85,6 +86,7 @@ export default function AssetListPage() {
 											<th className="px-4 py-3 font-medium">Name</th>
 											<th className="px-4 py-3 font-medium">Status</th>
 											<th className="px-4 py-3 font-medium">Condition</th>
+											<th className="px-4 py-3 text-right font-medium">Details</th>
 										</tr>
 									</thead>
 									<tbody>
@@ -112,6 +114,16 @@ export default function AssetListPage() {
 												</td>
 												<td className="px-4 py-3">
 													<StatusBadge value={asset.condition} tones={CONDITION_TONES} />
+												</td>
+												<td className="px-4 py-3 text-right">
+													<Button
+														variant="secondary"
+														href={`/assets/${asset.id}`}
+														title="Open the asset detail page with lifecycle actions"
+													>
+														<ArrowRight className="h-4 w-4" />
+														Details
+													</Button>
 												</td>
 											</tr>
 										))}

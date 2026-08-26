@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { Spinner } from './icons';
@@ -15,6 +16,7 @@ export function Button({
 	disabled,
 	busy = false,
 	onClick,
+	href,
 	title,
 	children,
 }: {
@@ -23,17 +25,28 @@ export function Button({
 	disabled?: boolean;
 	busy?: boolean;
 	onClick?: () => void;
+	// Render as a next/link with the button's styling instead of a <button>.
+	href?: string;
 	// Native tooltip, e.g. to explain why a lifecycle action is disabled.
 	title?: string;
 	children: ReactNode;
 }) {
+	const classes = `inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]}`;
+	if (href) {
+		return (
+			<Link href={href} title={title} className={classes}>
+				{busy && <Spinner className="h-4 w-4" />}
+				{children}
+			</Link>
+		);
+	}
 	return (
 		<button
 			type={type}
 			onClick={onClick}
 			disabled={disabled || busy}
 			title={title}
-			className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]}`}
+			className={classes}
 		>
 			{busy && <Spinner className="h-4 w-4" />}
 			{children}

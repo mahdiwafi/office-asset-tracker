@@ -41,6 +41,15 @@ export function ArrowLeft(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
+export function ArrowRight(props: SVGProps<SVGSVGElement>) {
+	return (
+		<Svg {...props}>
+			<path d="M5 12h14" />
+			<path d="m12 5 7 7-7 7" />
+		</Svg>
+	);
+}
+
 export function Check(props: SVGProps<SVGSVGElement>) {
 	return (
 		<Svg {...props}>
