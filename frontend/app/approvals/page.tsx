@@ -234,9 +234,9 @@ export default function ApprovalsPage() {
 																className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
 																aria-label="Returned condition"
 															>
-																<option value="good">good</option>
-																<option value="fair">fair</option>
-																<option value="poor">poor</option>
+																<option value="good">Good</option>
+																<option value="fair">Fair</option>
+																<option value="poor">Poor</option>
 															</select>
 														</td>
 														<td className="px-4 py-3">
