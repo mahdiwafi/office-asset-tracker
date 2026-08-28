@@ -58,9 +58,19 @@ async def _seed_category(session) -> int:
 	return category.id
 
 
-async def _seed_asset(session, category_id: int, tag: str) -> int:
+async def _seed_asset(
+	session,
+	category_id: int,
+	tag: str,
+	status: AssetStatus = AssetStatus.available,
+	condition: AssetCondition = AssetCondition.good,
+) -> int:
 	asset: Asset = Asset(
-		inventory_tag=tag, name='MacBook Pro 14', category_id=category_id
+		inventory_tag=tag,
+		name='MacBook Pro 14',
+		category_id=category_id,
+		status=status,
+		condition=condition,
 	)
 	session.add(asset)
 	await session.flush()
@@ -467,6 +477,30 @@ async def test_request_creation_is_idempotent_by_key(
 		sqlalchemy.select(Request).where(Request.asset_id == asset_id)
 	)
 	assert len(requests.all()) == 1
+
+
+async def test_a_loan_request_for_a_damaged_asset_is_rejected(
+	api_client, bearer_headers
+) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(
+		session,
+		category_id,
+		'HTTP-ASSET-14',
+		status=AssetStatus.damaged,
+		condition=AssetCondition.poor,
+	)
+	oid = _next_oid()
+	await _seed_user(session, 'http-damaged@example.com', UserRole.staff, oid)
+	response = await client.post(
+		'/requests',
+		headers=bearer_headers(oid),
+		json={'asset_id': asset_id, 'justification': 'field work'},
+	)
+	assert response.status_code == 409
+	assert 'damaged' in response.json()['detail']
+	assert 'cannot be loaned' in response.json()['detail']
 
 
 async def test_loan_list_paginates(api_client, bearer_headers) -> None:

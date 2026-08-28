@@ -30,6 +30,11 @@ function isoDaysFromNow(days: number): string {
 	return date.toLocaleDateString('en-CA');
 }
 
+// Damaged, maintenance, and offboarded assets cannot be loaned (ADR
+// 0010); a loaned asset stays requestable for a later window (forward
+// reservation, ADR 0006). Only these two appear in the picker.
+const REQUESTABLE_STATUSES = ['available', 'loaned'];
+
 const INPUT_CLASSES =
 	'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20';
 
@@ -45,12 +50,22 @@ export default function RaiseRequestPage() {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [created, setCreated] = useState<RaisedRequest | null>(null);
+	// Derived from the fetched list: the picker only offers assets that
+	// can be loaned (ADR 0010) — damaged, maintenance, and offboarded
+	// assets are excluded here and rejected by the API if one slips in.
+	const requestable =
+		assets?.filter((a) => REQUESTABLE_STATUSES.includes(a.status)) ?? [];
 
 	useEffect(() => {
 		api('/assets')
 			.then((body) => {
 				setAssets(body.items);
-				if (body.items.length > 0) setAssetId(String(body.items[0].id));
+				// The default selection is the first requestable asset, not
+				// the first row — a damaged device must not be pre-selected.
+				const requestable = body.items.filter((a: Asset) =>
+					REQUESTABLE_STATUSES.includes(a.status)
+				);
+				if (requestable.length > 0) setAssetId(String(requestable[0].id));
 			})
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
 	}, []);
@@ -132,7 +147,7 @@ export default function RaiseRequestPage() {
 									onChange={(e) => setAssetId(e.target.value)}
 									className={INPUT_CLASSES}
 								>
-									{assets.map((asset) => (
+									{requestable.map((asset) => (
 										<option key={asset.id} value={asset.id}>
 											{asset.inventory_tag} — {asset.name} (
 											{asset.status}
@@ -144,7 +159,7 @@ export default function RaiseRequestPage() {
 									))}
 								</select>
 								{(() => {
-									const selected = assets.find(
+									const selected = requestable.find(
 										(a) => a.id === Number(assetId)
 									);
 									return selected?.loaned_until ? (
@@ -211,7 +226,17 @@ export default function RaiseRequestPage() {
 								Optional — but an approval issues the loan for exactly this period
 								(capped at 30 days), so fill both when you know the dates.
 							</p>
-							<Button type="submit" busy={submitting}>
+							{requestable.length === 0 && (
+								<p className="text-sm text-amber-700">
+									No assets can be requested right now — damaged, maintenance,
+									and offboarded assets cannot be loaned.
+								</p>
+							)}
+							<Button
+								type="submit"
+								busy={submitting}
+								disabled={requestable.length === 0}
+							>
 								<Plus className="h-4 w-4" />
 								Submit request
 							</Button>

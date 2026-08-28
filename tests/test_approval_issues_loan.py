@@ -10,12 +10,23 @@ import datetime
 import pytest
 import sqlalchemy
 
-from app.models import Asset, AssetStatus, Loan, LoanCondition, UserRole
+from app.models import (
+	Asset,
+	AssetCondition,
+	AssetStatus,
+	Loan,
+	LoanCondition,
+	UserRole,
+)
 from app.models.approval import ApprovalDecision
 from app.schemas.loan import LoanCreate
 from app.schemas.request import RequestCreate
 from app.services.approvals import approve_request
-from app.services.errors import LoanDurationExceededError, LoanOverlapError
+from app.services.errors import (
+	AssetUnavailableError,
+	LoanDurationExceededError,
+	LoanOverlapError,
+)
 from app.services.loans import (
 	MAX_LOAN_DURATION_DAYS,
 	create_loan,
@@ -298,3 +309,35 @@ async def test_return_loan_with_damaged_condition_keeps_asset_damaged(
 	)
 	asset = await db_session.get(Asset, asset.id)
 	assert asset.status is AssetStatus.damaged
+
+
+async def test_approval_does_not_issue_when_the_asset_turned_damaged(
+	db_session, user_factory, asset_factory
+) -> None:
+	# The status gate at issuance is the backstop (ADR 0010): the asset
+	# was fine when the request was created, but a poor return or a repair
+	# after that makes it unloanable before the approver decides. The
+	# approval fails cleanly and the request stays pending — the approver
+	# declines it instead of issuing a loan on an unloanable asset.
+	approver = await user_factory(email='approver@example.com', role=UserRole.approver)
+	requester = await user_factory(email='requester@example.com')
+	asset = await asset_factory()
+	start = datetime.date.today()
+	due = start + datetime.timedelta(days=7)
+	request, _created = await create_request(
+		db_session,
+		requester.id,
+		RequestCreate(
+			asset_id=asset.id,
+			justification='need a laptop',
+			start_date=start,
+			due_date=due,
+		),
+	)
+	asset.status = AssetStatus.damaged
+	asset.condition = AssetCondition.poor
+	await db_session.flush()
+	with pytest.raises(AssetUnavailableError):
+		await approve_request(
+			db_session, approver.id, request.id, ApprovalDecision.approved
+		)

@@ -1,11 +1,15 @@
 import sqlalchemy
 import sqlalchemy.orm as saorm
 
-from app.models import Loan, Request
+from app.models import Asset, AssetStatus, Loan, Request
 from app.models.request import RequestStatus
 from app.schemas.request import RequestCreate
 from app.services.audit import record, snapshot
-from app.services.errors import PendingRequestExistsError
+from app.services.errors import (
+	AssetNotFoundError,
+	AssetUnavailableError,
+	PendingRequestExistsError,
+)
 
 
 async def create_request(
@@ -24,6 +28,22 @@ async def create_request(
 		)
 		if existing is not None:
 			return existing, False
+	if data.asset_id is not None:
+		# Loanability gate (ADR 0010): damaged, maintenance, and offboarded
+		# assets cannot be loaned — the request path enforces the same rule
+		# as create_loan. A loaned asset stays requestable: the request may
+		# name a later window (forward reservation, ADR 0006).
+		asset: Asset | None = await session.get(Asset, data.asset_id)
+		if asset is None:
+			raise AssetNotFoundError(f'asset {data.asset_id} not found')
+		if asset.status in (
+			AssetStatus.damaged,
+			AssetStatus.maintenance,
+			AssetStatus.offboarded,
+		):
+			raise AssetUnavailableError(
+				f'asset {data.asset_id} is {asset.status.value} and cannot be loaned'
+			)
 	pending_count: int = await session.scalar(
 		sqlalchemy.select(sqlalchemy.func.count())
 		.select_from(Request)

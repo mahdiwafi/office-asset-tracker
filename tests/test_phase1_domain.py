@@ -6,7 +6,7 @@ import datetime
 
 import pytest
 
-from app.models import AssetStatus, LoanCondition, UserRole
+from app.models import AssetCondition, AssetStatus, LoanCondition, UserRole
 from app.models.approval import ApprovalDecision
 from app.schemas.asset import AssetCreate
 from app.schemas.loan import LoanCreate
@@ -225,6 +225,80 @@ async def test_a_loan_request_is_rejected_while_an_extension_is_pending(
 			requester.id,
 			RequestCreate(asset_id=asset.id, justification='need the asset later'),
 		)
+
+
+async def test_a_loan_request_is_rejected_for_a_damaged_asset(
+	db_session, user_factory, asset_factory
+) -> None:
+	actor = await user_factory()
+	# Damaged always implies poor (the two-way invariant) — the seed must
+	# respect it or the insert violates the DB check constraint.
+	asset = await asset_factory(
+		status=AssetStatus.damaged, condition=AssetCondition.poor
+	)
+	with pytest.raises(AssetUnavailableError):
+		await create_request(
+			db_session,
+			actor.id,
+			RequestCreate(
+				asset_id=asset.id,
+				justification='need the device',
+				start_date=datetime.date.today(),
+				due_date=datetime.date.today() + datetime.timedelta(days=7),
+			),
+		)
+
+
+async def test_a_loan_request_is_rejected_for_an_asset_in_maintenance(
+	db_session, user_factory, asset_factory
+) -> None:
+	actor = await user_factory()
+	asset = await asset_factory(status=AssetStatus.maintenance)
+	with pytest.raises(AssetUnavailableError):
+		await create_request(
+			db_session,
+			actor.id,
+			RequestCreate(
+				asset_id=asset.id,
+				justification='need the device',
+				start_date=datetime.date.today(),
+				due_date=datetime.date.today() + datetime.timedelta(days=7),
+			),
+		)
+
+
+async def test_a_loan_request_is_rejected_for_an_offboarded_asset(
+	db_session, user_factory, asset_factory
+) -> None:
+	actor = await user_factory()
+	asset = await asset_factory(status=AssetStatus.offboarded)
+	with pytest.raises(AssetUnavailableError):
+		await create_request(
+			db_session,
+			actor.id,
+			RequestCreate(
+				asset_id=asset.id,
+				justification='need the device',
+				start_date=datetime.date.today(),
+				due_date=datetime.date.today() + datetime.timedelta(days=7),
+			),
+		)
+
+
+async def test_a_loan_request_for_a_loaned_asset_is_still_allowed(
+	db_session, user_factory, asset_factory
+) -> None:
+	# Forward reservations (ADR 0006): a loaned asset can be requested for
+	# a later period. Only damaged, maintenance, and offboarded block the
+	# request — the rule is "cannot be loaned", not "unavailable now".
+	actor = await user_factory()
+	asset = await asset_factory(status=AssetStatus.loaned)
+	request, _created = await create_request(
+		db_session,
+		actor.id,
+		RequestCreate(asset_id=asset.id, justification='later window'),
+	)
+	assert request.asset_id == asset.id
 
 
 async def test_an_asset_state_change_cannot_commit_without_an_audit_entry(

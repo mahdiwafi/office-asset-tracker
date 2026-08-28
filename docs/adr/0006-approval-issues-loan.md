@@ -28,3 +28,4 @@ The frontend request form carries the two dates (start today, due +14 by default
 - `return_loan` now closes the loop on the asset: a good-condition return restores `available`, a poor-condition return leaves the asset `damaged` for repair.
 - Consent-only requests remain possible (API-only issuance) but the UI always submits dates; the 30-day cap is validated on both sides, client and service.
 - Two paths now write loans; the `_finalize_loan` helper keeps them from drifting apart — a future third path (e.g. bulk transfer) should route through it too.
+- **Superseded in part by ADR 0010.** The "no availability gate on the issuance path" clause gains one exception: `damaged`, `maintenance`, and `offboarded` assets are never issued a loan, at request time or at decision time. The forward-reservation rationale for `loaned` assets stands.

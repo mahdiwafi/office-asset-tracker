@@ -116,15 +116,31 @@ async def issue_loan_from_request(
 	"""Approval-side issuance: when an approved request names an asset and
 	a date range, the approval itself issues the loan. Requests without
 	dates are consent-only — the loan is issued separately. There is no
-	availability gate here: the request may name a period after the
-	current loan ends, so the asset can be unavailable today; the
-	exclusion constraint is the guarantee that matters."""
+	availability gate for a loaned asset: the request may name a period
+	after the current loan ends, so the asset can be loaned today; the
+	exclusion constraint is the guarantee that matters. The one exception
+	is the loanability rule (ADR 0010): an asset that turned damaged, is
+	in maintenance, or is offboarded since the request was created is
+	never issued — the approval fails cleanly and the approver declines."""
 	if (
 		request.asset_id is None
 		or request.start_date is None
 		or request.due_date is None
 	):
 		return None
+	asset: Asset | None = await session.get(Asset, request.asset_id)
+	if asset is not None and asset.status in (
+		AssetStatus.damaged,
+		AssetStatus.maintenance,
+		AssetStatus.offboarded,
+	):
+		# The decision-time backstop (ADR 0010): the request was fine when
+		# created, but the asset is no longer loanable. Raise before any
+		# write so the approval fails cleanly and the request stays
+		# pending for the approver to decline.
+		raise AssetUnavailableError(
+			f'asset {request.asset_id} is {asset.status.value} and cannot be loaned'
+		)
 	if request.due_date <= request.start_date:
 		raise LoanDurationExceededError('due date must be after the start date')
 	duration: datetime.timedelta = request.due_date - request.start_date
