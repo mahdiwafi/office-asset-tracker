@@ -37,13 +37,6 @@ type Loan = {
 const isOverdue = (loan: Loan) =>
 	!loan.returned_at && loan.due_date < new Date().toLocaleDateString('en-CA');
 
-// A sensible default for the extension picker: a week past the current
-// due date, computed in UTC so the date math never crosses a timezone.
-const weekLater = (date: string) => {
-	const [y, m, d] = date.split('-').map(Number);
-	return new Date(Date.UTC(y, m - 1, d + 7)).toISOString().slice(0, 10);
-};
-
 export default function MyLoansPage() {
 	const [me, setMe] = useState<Me | null>(null);
 	const [loans, setLoans] = useState<Loan[] | null>(null);
@@ -70,13 +63,16 @@ export default function MyLoansPage() {
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
 	}, [me]);
 
-	async function handleRequestExtend(loanId: number) {
-		const newDue = extendDues[loanId];
-		if (!newDue) return;
-		setExtendingBusy(loanId);
+	async function handleRequestExtend(loan: Loan) {
+		// The picker starts on the current due date; the shown value is
+		// always the value sent — no dead default that silently needs a
+		// change first. Sending the due date unchanged surfaces the API's
+		// clear "must move the due date later" rejection.
+		const newDue = extendDues[loan.id] ?? loan.due_date.slice(0, 10);
+		setExtendingBusy(loan.id);
 		setError(null);
 		try {
-			await api(`/loans/${loanId}/extend`, {
+			await api(`/loans/${loan.id}/extend`, {
 				method: 'POST',
 				body: { new_due_date: newDue },
 			});
@@ -222,7 +218,7 @@ export default function MyLoansPage() {
 															<div className="flex items-center gap-2">
 																<input
 																	type="date"
-																	value={extendDues[loan.id] ?? weekLater(loan.due_date)}
+																	value={extendDues[loan.id] ?? loan.due_date.slice(0, 10)}
 																	min={loan.due_date.slice(0, 10)}
 																	onChange={(e) =>
 																		setExtendDues((prev) => ({
@@ -236,7 +232,7 @@ export default function MyLoansPage() {
 																<Button
 																	variant="secondary"
 																	busy={extendingBusy === loan.id}
-																	onClick={() => handleRequestExtend(loan.id)}
+																	onClick={() => handleRequestExtend(loan)}
 																>
 																	Send
 																</Button>
