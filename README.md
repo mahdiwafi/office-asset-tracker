@@ -113,5 +113,4 @@ The assistant needs Azure AI Search (`AI_SEARCH_ENDPOINT`/`AI_SEARCH_KEY`) and, 
 - `docs/plan.md` — the seven-day build schedule and its rationale
 - `docs/learning-log.md` — what was built, what broke, and the fix, per session
 - `docs/golden-set.md` — the assistant's manual evaluation set
-- `docs/recording-script.md` — the three-minute demo recording script
 - `docs/screenshots/` — live-site captures, wired into this README
