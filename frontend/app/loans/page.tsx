@@ -37,6 +37,16 @@ type Loan = {
 const isOverdue = (loan: Loan) =>
 	!loan.returned_at && loan.due_date < new Date().toLocaleDateString('en-CA');
 
+// The extension picker's earliest selectable date: the day after the
+// current due date. Extending to the due date itself is not an
+// extension, so it is greyed out (min) with everything before it — the
+// calendar only allows from the next day onward. UTC math keeps the
+// date from drifting across timezones.
+const dayAfter = (date: string) => {
+	const [y, m, d] = date.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+};
+
 export default function MyLoansPage() {
 	const [me, setMe] = useState<Me | null>(null);
 	const [loans, setLoans] = useState<Loan[] | null>(null);
@@ -64,11 +74,10 @@ export default function MyLoansPage() {
 	}, [me]);
 
 	async function handleRequestExtend(loan: Loan) {
-		// The picker starts on the current due date; the shown value is
-		// always the value sent — no dead default that silently needs a
-		// change first. Sending the due date unchanged surfaces the API's
-		// clear "must move the due date later" rejection.
-		const newDue = extendDues[loan.id] ?? loan.due_date.slice(0, 10);
+		// The picker starts on the day after the current due date — the
+		// due date itself is greyed out (min), so the shown value is
+		// always a valid extension, and it is always the value sent.
+		const newDue = extendDues[loan.id] ?? dayAfter(loan.due_date);
 		setExtendingBusy(loan.id);
 		setError(null);
 		try {
@@ -218,8 +227,8 @@ export default function MyLoansPage() {
 															<div className="flex items-center gap-2">
 																<input
 																	type="date"
-																	value={extendDues[loan.id] ?? loan.due_date.slice(0, 10)}
-																	min={loan.due_date.slice(0, 10)}
+																	value={extendDues[loan.id] ?? dayAfter(loan.due_date)}
+																	min={dayAfter(loan.due_date)}
 																	onChange={(e) =>
 																		setExtendDues((prev) => ({
 																			...prev,
