@@ -62,6 +62,18 @@ class OverdueExtensionError(DomainError):
 	pass
 
 
+class ExtendAlreadyRequestedError(DomainError):
+	pass
+
+
+class NoExtendRequestedError(DomainError):
+	pass
+
+
+class InvalidExtensionError(DomainError):
+	pass
+
+
 class PendingRequestExistsError(DomainError):
 	pass
 

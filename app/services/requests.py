@@ -1,7 +1,7 @@
 import sqlalchemy
 import sqlalchemy.orm as saorm
 
-from app.models import Request
+from app.models import Loan, Request
 from app.models.request import RequestStatus
 from app.schemas.request import RequestCreate
 from app.services.audit import record, snapshot
@@ -35,6 +35,22 @@ async def create_request(
 	if pending_count:
 		raise PendingRequestExistsError(
 			f'asset {data.asset_id} already has a pending request'
+		)
+	pending_extend: int = await session.scalar(
+		sqlalchemy.select(sqlalchemy.func.count())
+		.select_from(Loan)
+		.where(
+			Loan.asset_id == data.asset_id,
+			Loan.returned_at.is_(None),
+			Loan.extend_requested_at.is_not(None),
+		)
+	)
+	if pending_extend:
+		# The other half of the two-way exclusion (ADR 0009): while the
+		# current borrower's extension is pending, the asset's future is
+		# not decided twice at once — the request waits for the decision.
+		raise PendingRequestExistsError(
+			f'asset {data.asset_id} has a pending extension request'
 		)
 	request: Request = Request(
 		requester_id=actor_id,

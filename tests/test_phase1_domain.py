@@ -28,7 +28,7 @@ from app.services.loans import (
 	MAX_LOAN_DURATION_DAYS,
 	create_loan,
 	decide_return,
-	extend_loan,
+	request_extend,
 	request_return,
 )
 from app.services.requests import create_request
@@ -198,11 +198,32 @@ async def test_an_overdue_loan_cannot_be_extended_without_escalation(
 		due_date=datetime.date.today() - datetime.timedelta(days=1),
 	)
 	with pytest.raises(OverdueExtensionError):
-		await extend_loan(
+		await request_extend(
 			db_session,
 			actor.id,
 			overdue.id,
 			datetime.date.today() + datetime.timedelta(days=7),
+		)
+
+
+async def test_a_loan_request_is_rejected_while_an_extension_is_pending(
+	db_session, user_factory, asset_factory, loan_factory
+) -> None:
+	borrower = await user_factory(email='borrower@example.com')
+	requester = await user_factory(email='requester@example.com')
+	asset = await asset_factory()
+	loan = await loan_factory(asset, borrower, returned=False)
+	await request_extend(
+		db_session, borrower.id, loan.id, loan.due_date + datetime.timedelta(days=7)
+	)
+	# The other half of the two-way exclusion: while the borrower's
+	# extension is pending, no one may claim the asset with a new loan
+	# request — the future of the asset is not decided twice at once.
+	with pytest.raises(PendingRequestExistsError):
+		await create_request(
+			db_session,
+			requester.id,
+			RequestCreate(asset_id=asset.id, justification='need the asset later'),
 		)
 
 

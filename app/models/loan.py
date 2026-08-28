@@ -36,6 +36,13 @@ class Loan(Base):
 	due_date: saorm.Mapped[datetime.date] = saorm.mapped_column(sqlalchemy.Date)
 	returned_at: saorm.Mapped[datetime.datetime | None] = saorm.mapped_column()
 	return_requested_at: saorm.Mapped[datetime.datetime | None] = saorm.mapped_column()
+	# A pending extension request (ADR 0009): the borrower asked for a new
+	# due date and an approver has not decided yet. The loan's due_date
+	# does not move while these are set — the requested date sits here.
+	extend_requested_at: saorm.Mapped[datetime.datetime | None] = saorm.mapped_column()
+	extend_due_date: saorm.Mapped[datetime.date | None] = saorm.mapped_column(
+		sqlalchemy.Date
+	)
 	condition_out: saorm.Mapped[LoanCondition] = saorm.mapped_column(
 		sqlalchemy.Enum(LoanCondition, native_enum=False),
 	)

@@ -33,6 +33,8 @@ class LoanRead(pydantic.BaseModel):
 	due_date: datetime.date
 	returned_at: datetime.datetime | None
 	return_requested_at: datetime.datetime | None
+	extend_requested_at: datetime.datetime | None
+	extend_due_date: datetime.date | None
 	condition_out: LoanCondition
 	condition_in: LoanCondition | None
 
@@ -47,5 +49,7 @@ class LoanListItem(pydantic.BaseModel):
 	due_date: datetime.date
 	returned_at: datetime.datetime | None
 	return_requested_at: datetime.datetime | None
+	extend_requested_at: datetime.datetime | None
+	extend_due_date: datetime.date | None
 	condition_out: LoanCondition
 	condition_in: LoanCondition | None

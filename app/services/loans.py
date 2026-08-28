@@ -14,19 +14,24 @@ from app.models import (
 	User,
 )
 from app.models.approval import Approval, ApprovalDecision
+from app.models.request import RequestStatus
 from app.models.user import UserRole
 from app.schemas.loan import LoanCreate
 from app.services.audit import record, snapshot
 from app.services.errors import (
 	AssetNotFoundError,
 	AssetUnavailableError,
+	ExtendAlreadyRequestedError,
+	InvalidExtensionError,
 	LoanAlreadyReturnedError,
 	LoanDurationExceededError,
 	LoanNotFoundError,
 	LoanOverlapError,
+	NoExtendRequestedError,
 	NoReturnRequestedError,
 	NotAnApproverError,
 	OverdueExtensionError,
+	PendingRequestExistsError,
 	ReturnAlreadyRequestedError,
 	ReturnConditionMissingError,
 )
@@ -254,14 +259,50 @@ async def decide_return(
 	return loan
 
 
-async def extend_loan(
+async def request_extend(
 	session: saorm.Session, actor_id: int, loan_id: int, new_due_date: datetime.date
 ) -> Loan:
+	"""First half of the extension flow: request a new due date.
+
+	The borrower (or an approver acting on their behalf) asks for a later
+	due date; the due date does not move until an approver decides. The
+	exclusion is two-way (ADR 0009): an extension request is blocked
+	while a loan request is pending on the asset, and a loan request is
+	blocked while an extension request is pending — the asset's future is
+	never claimed twice at once."""
 	loan: Loan | None = await session.get(Loan, loan_id)
 	if loan is None:
 		raise LoanNotFoundError(f'loan {loan_id} not found')
 	if loan.returned_at is not None:
 		raise LoanAlreadyReturnedError(f'loan {loan_id} is already returned')
+	if loan.return_requested_at is not None:
+		raise ReturnAlreadyRequestedError(
+			f'loan {loan_id} has a pending return; it cannot also be extended'
+		)
+	if loan.extend_requested_at is not None:
+		raise ExtendAlreadyRequestedError(
+			f'loan {loan_id} already has a pending extension request'
+		)
+	if new_due_date <= loan.due_date:
+		# Equal is not an extension, earlier is a shortening — neither
+		# moves the due date later, so neither is an extend.
+		raise InvalidExtensionError(
+			f'loan {loan_id} is due {loan.due_date.isoformat()}; an extension '
+			f'must move the due date later, not to {new_due_date.isoformat()}'
+		)
+	pending: int = await session.scalar(
+		sqlalchemy.select(sqlalchemy.func.count())
+		.select_from(Request)
+		.where(
+			Request.asset_id == loan.asset_id,
+			Request.status == RequestStatus.pending,
+		)
+	)
+	if pending:
+		raise PendingRequestExistsError(
+			f'asset {loan.asset_id} has a pending loan request; extend once '
+			'it is decided'
+		)
 	today: datetime.date = datetime.date.today()
 	if loan.due_date < today:
 		escalated: bool = False
@@ -279,13 +320,84 @@ async def extend_loan(
 			raise OverdueExtensionError(
 				f'loan {loan_id} is overdue; extending it requires an approved escalation'
 			)
+	actor: User | None = await session.get(User, actor_id)
+	is_approver: bool = actor is not None and actor.role in (
+		UserRole.approver,
+		UserRole.admin,
+	)
+	if actor_id != loan.borrower_id and not is_approver:
+		raise NotAnApproverError(
+			f'user {actor_id} cannot request an extension on loan {loan_id}'
+		)
 	before = snapshot(loan)
+	loan.extend_requested_at = datetime.datetime.now()
+	loan.extend_due_date = new_due_date
+	await session.flush()
+	await record(
+		session,
+		actor_id=actor_id,
+		action='loan.extend_requested',
+		entity_type='loan',
+		entity_id=loan.id,
+		before=before,
+		after=snapshot(loan),
+	)
+	return loan
+
+
+async def decide_extend(
+	session: saorm.Session,
+	approver_id: int,
+	loan_id: int,
+	decision: ApprovalDecision,
+) -> Loan:
+	"""Second half of the extension flow: an approver moves the due date.
+
+	Approving consumes the pending request and writes the requested date
+	onto the loan; declining cancels the request and leaves the loan
+	exactly as it was."""
+	approver: User | None = await session.get(User, approver_id)
+	if approver is None:
+		raise NotAnApproverError(f'user {approver_id} not found')
+	if approver.role not in (UserRole.approver, UserRole.admin):
+		raise NotAnApproverError(
+			f'user {approver_id} with role {approver.role.value} cannot decide extensions'
+		)
+	loan: Loan | None = await session.get(Loan, loan_id)
+	if loan is None:
+		raise LoanNotFoundError(f'loan {loan_id} not found')
+	if loan.returned_at is not None:
+		raise LoanAlreadyReturnedError(f'loan {loan_id} is already returned')
+	if loan.extend_requested_at is None:
+		raise NoExtendRequestedError(
+			f'loan {loan_id} has no extension request to decide'
+		)
+	if decision is ApprovalDecision.declined:
+		before = snapshot(loan)
+		loan.extend_requested_at = None
+		loan.extend_due_date = None
+		await session.flush()
+		await record(
+			session,
+			actor_id=approver_id,
+			action='loan.extend_declined',
+			entity_type='loan',
+			entity_id=loan.id,
+			before=before,
+			after=snapshot(loan),
+		)
+		return loan
+	new_due_date: datetime.date = loan.extend_due_date
+	before = snapshot(loan)
+	loan.extend_requested_at = None
+	loan.extend_due_date = None
 	loan.due_date = new_due_date
 	try:
 		await session.flush()
 	except sqlalchemy.exc.IntegrityError as error:
-		# Moving an active loan's due date into another active loan's range
-		# is rejected by the same exclusion constraint.
+		# Moving the due date into another active loan's range is rejected
+		# by the same exclusion constraint — the race between the request
+		# and the decision cannot slip past the database.
 		if getattr(error.orig, 'sqlstate', None) == '23P01':
 			raise LoanOverlapError(
 				f'extending loan {loan_id} to {new_due_date} would overlap '
@@ -294,7 +406,7 @@ async def extend_loan(
 		raise
 	await record(
 		session,
-		actor_id=actor_id,
+		actor_id=approver_id,
 		action='loan.extend',
 		entity_type='loan',
 		entity_id=loan.id,
@@ -308,6 +420,7 @@ async def list_loans(
 	session: saorm.Session,
 	borrower_id: int | None = None,
 	return_requested: bool | None = None,
+	extend_requested: bool | None = None,
 	limit: int = 50,
 	offset: int = 0,
 ) -> tuple[list[dict], int]:
@@ -324,6 +437,15 @@ async def list_loans(
 		)
 		count_query = count_query.where(
 			Loan.return_requested_at.is_not(None), Loan.returned_at.is_(None)
+		)
+	if extend_requested is not None:
+		# The approvals queue's pending-extensions view: loans whose
+		# borrower asked for a later due date (ADR 0009).
+		query = query.where(
+			Loan.extend_requested_at.is_not(None), Loan.returned_at.is_(None)
+		)
+		count_query = count_query.where(
+			Loan.extend_requested_at.is_not(None), Loan.returned_at.is_(None)
 		)
 	# Eagerly loaded after the Day 3 N+1 checkpoint. Without this, a lazy
 	# loan.asset / loan.borrower load is not just one extra query per row —
@@ -349,6 +471,8 @@ async def list_loans(
 			'due_date': loan.due_date,
 			'returned_at': loan.returned_at,
 			'return_requested_at': loan.return_requested_at,
+			'extend_requested_at': loan.extend_requested_at,
+			'extend_due_date': loan.extend_due_date,
 			'condition_out': loan.condition_out,
 			'condition_in': loan.condition_in,
 		}

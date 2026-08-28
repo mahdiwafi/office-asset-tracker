@@ -26,6 +26,8 @@ type Loan = {
 	due_date: string;
 	returned_at: string | null;
 	return_requested_at: string | null;
+	extend_requested_at: string | null;
+	extend_due_date: string | null;
 	condition_out: string;
 	condition_in: string | null;
 };
@@ -35,12 +37,25 @@ type Loan = {
 const isOverdue = (loan: Loan) =>
 	!loan.returned_at && loan.due_date < new Date().toLocaleDateString('en-CA');
 
+// A sensible default for the extension picker: a week past the current
+// due date, computed in UTC so the date math never crosses a timezone.
+const weekLater = (date: string) => {
+	const [y, m, d] = date.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1, d + 7)).toISOString().slice(0, 10);
+};
+
 export default function MyLoansPage() {
 	const [me, setMe] = useState<Me | null>(null);
 	const [loans, setLoans] = useState<Loan[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	// The row whose return request POST is in flight.
 	const [requestingId, setRequestingId] = useState<number | null>(null);
+	// The row whose extension form is open, its chosen date, and the POST
+	// in flight — extension is a request too (an approver decides), so the
+	// due date never moves from this page.
+	const [extendingId, setExtendingId] = useState<number | null>(null);
+	const [extendDues, setExtendDues] = useState<Record<number, string>>({});
+	const [extendingBusy, setExtendingBusy] = useState<number | null>(null);
 
 	useEffect(() => {
 		api('/users/me')
@@ -54,6 +69,27 @@ export default function MyLoansPage() {
 			.then((body) => setLoans(body.items))
 			.catch((e: unknown) => setError(e instanceof ApiError ? e.message : String(e)));
 	}, [me]);
+
+	async function handleRequestExtend(loanId: number) {
+		const newDue = extendDues[loanId];
+		if (!newDue) return;
+		setExtendingBusy(loanId);
+		setError(null);
+		try {
+			await api(`/loans/${loanId}/extend`, {
+				method: 'POST',
+				body: { new_due_date: newDue },
+			});
+			if (!me) return;
+			const body = await api(`/loans?borrower_id=${me.id}`);
+			setLoans(body.items);
+			setExtendingId(null);
+		} catch (e) {
+			setError(e instanceof ApiError ? e.message : String(e));
+		} finally {
+			setExtendingBusy(null);
+		}
+	}
 
 	async function handleRequestReturn(loanId: number) {
 		setRequestingId(loanId);
@@ -180,14 +216,53 @@ export default function MyLoansPage() {
 															<span className="text-gray-300">—</span>
 														) : loan.return_requested_at ? (
 															<Badge tone="amber">Return requested</Badge>
+														) : loan.extend_requested_at ? (
+															<Badge tone="amber">Extension pending</Badge>
+														) : extendingId === loan.id ? (
+															<div className="flex items-center gap-2">
+																<input
+																	type="date"
+																	value={extendDues[loan.id] ?? weekLater(loan.due_date)}
+																	min={loan.due_date.slice(0, 10)}
+																	onChange={(e) =>
+																		setExtendDues((prev) => ({
+																			...prev,
+																			[loan.id]: e.target.value,
+																		}))
+																	}
+																	className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+																	aria-label="New due date"
+																/>
+																<Button
+																	variant="secondary"
+																	busy={extendingBusy === loan.id}
+																	onClick={() => handleRequestExtend(loan.id)}
+																>
+																	Send
+																</Button>
+																<button
+																	onClick={() => setExtendingId(null)}
+																	className="text-sm text-gray-500 hover:text-gray-700"
+																>
+																	Cancel
+																</button>
+															</div>
 														) : (
-															<Button
-																variant="secondary"
-																busy={requestingId === loan.id}
-																onClick={() => handleRequestReturn(loan.id)}
-															>
-																Request return
-															</Button>
+															<div className="flex gap-2">
+																<Button
+																	variant="secondary"
+																	onClick={() => setExtendingId(loan.id)}
+																>
+																	Extend
+																</Button>
+																<Button
+																	variant="secondary"
+																	busy={requestingId === loan.id}
+																	onClick={() => handleRequestReturn(loan.id)}
+																>
+																	Request return
+																</Button>
+															</div>
 														)}
 													</td>
 												</tr>

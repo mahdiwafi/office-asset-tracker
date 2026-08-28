@@ -49,8 +49,8 @@ flowchart LR
 | --- | --- |
 | Asset catalog | Inventory with status, condition, and per-item pages; approvers run the repair queue (maintenance, repair, retirement), staff loan and return |
 | Raise request | Loan requests with justification; approvers decide with full history |
-| Approvals | Manager/ICT queues for requests and returns; approving commits four writes atomically; the return decision records the returned condition |
-| My loans | Active loans with due dates, renewal, and a request-return flow — the approver grades the return |
+| Approvals | Manager/ICT queues for requests, returns, and extensions; approving commits four writes atomically; the return decision records the returned condition |
+| My loans | Active loans with due dates; request an extension or a return — an approver decides both, and the two never queue on the same asset |
 | Audit log | Append-only trail of every state change |
 | Ask ICT | Policy Q&A with cited sources — answer, refusal, or citations-only, and always the evidence |
 

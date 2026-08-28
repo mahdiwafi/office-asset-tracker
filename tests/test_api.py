@@ -697,3 +697,156 @@ async def test_staff_cannot_offboard_an_asset_over_http(
 	)
 	assert response.status_code == 403
 	assert 'cannot set asset' in response.json()['detail']
+
+
+async def test_extension_is_requested_by_the_borrower_and_decided_by_an_approver(
+	api_client, bearer_headers
+) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(session, category_id, 'HTTP-EXT-1')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		session, 'http-borrower-ext@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	create = await client.post(
+		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
+	)
+	assert create.status_code == 201
+	loan_id = create.json()['id']
+	original_due = create.json()['due_date']
+	new_due = _iso(21)
+	# Step 1: the borrower requests the extension with a new due date —
+	# the due date does not move until an approver decides.
+	requested = await client.post(
+		f'/loans/{loan_id}/extend',
+		headers=headers,
+		json={'new_due_date': new_due},
+	)
+	assert requested.status_code == 200
+	loan = await session.get(Loan, loan_id)
+	assert loan.extend_requested_at is not None
+	assert loan.extend_due_date.isoformat() == new_due
+	assert loan.due_date.isoformat() == original_due
+	# Step 2: an approver moves the due date and consumes the request.
+	approver_oid = _next_oid()
+	await _seed_user(
+		session, 'http-approver-ext@example.com', UserRole.approver, approver_oid
+	)
+	decided = await client.post(
+		f'/loans/{loan_id}/extend/decision',
+		headers=bearer_headers(approver_oid, roles=['Approver']),
+		json={'decision': 'approved'},
+	)
+	assert decided.status_code == 200
+	loan = await session.get(Loan, loan_id)
+	assert loan.due_date.isoformat() == new_due
+	assert loan.extend_requested_at is None
+	assert loan.extend_due_date is None
+
+
+async def test_only_approvers_can_decide_an_extension_over_http(
+	api_client, bearer_headers
+) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(session, category_id, 'HTTP-EXT-2')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		session, 'http-borrower-ext2@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	create = await client.post(
+		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
+	)
+	loan_id = create.json()['id']
+	await client.post(
+		f'/loans/{loan_id}/extend',
+		headers=headers,
+		json={'new_due_date': _iso(21)},
+	)
+	# The borrower cannot decide their own extension — the decision is
+	# the approver's, like the return decision.
+	response = await client.post(
+		f'/loans/{loan_id}/extend/decision',
+		headers=headers,
+		json={'decision': 'approved'},
+	)
+	assert response.status_code == 403
+	loan = await session.get(Loan, loan_id)
+	assert loan.extend_requested_at is not None
+	assert loan.due_date.isoformat() == _iso(14)
+
+
+async def test_an_extension_request_is_rejected_while_a_loan_request_is_pending(
+	api_client, bearer_headers
+) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(session, category_id, 'HTTP-EXT-3')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		session, 'http-borrower-ext3@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	create = await client.post(
+		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
+	)
+	loan_id = create.json()['id']
+	# Someone else's loan request claims the asset's future; the
+	# extension waits until an approver has decided that request.
+	requester_oid = _next_oid()
+	await _seed_user(
+		session, 'http-requester-ext@example.com', UserRole.staff, requester_oid
+	)
+	claimed = await client.post(
+		'/requests',
+		headers=bearer_headers(requester_oid),
+		json={'asset_id': asset_id, 'justification': 'field work'},
+	)
+	assert claimed.status_code == 201
+	response = await client.post(
+		f'/loans/{loan_id}/extend',
+		headers=headers,
+		json={'new_due_date': _iso(21)},
+	)
+	assert response.status_code == 409
+	assert 'pending loan request' in response.json()['detail']
+	loan = await session.get(Loan, loan_id)
+	assert loan.extend_requested_at is None
+
+
+async def test_a_loan_request_is_rejected_while_an_extension_is_pending(
+	api_client, bearer_headers
+) -> None:
+	client, session = api_client
+	category_id = await _seed_category(session)
+	asset_id = await _seed_asset(session, category_id, 'HTTP-EXT-4')
+	oid = _next_oid()
+	borrower_id = await _seed_user(
+		session, 'http-borrower-ext4@example.com', UserRole.staff, oid
+	)
+	headers = bearer_headers(oid)
+	create = await client.post(
+		'/loans', headers=headers, json=_loan_payload(asset_id, borrower_id)
+	)
+	loan_id = create.json()['id']
+	await client.post(
+		f'/loans/{loan_id}/extend',
+		headers=headers,
+		json={'new_due_date': _iso(21)},
+	)
+	# The other half of the exclusion: while the borrower's extension is
+	# pending, no new loan request may claim the same asset.
+	requester_oid = _next_oid()
+	await _seed_user(
+		session, 'http-requester-ext2@example.com', UserRole.staff, requester_oid
+	)
+	response = await client.post(
+		'/requests',
+		headers=bearer_headers(requester_oid),
+		json={'asset_id': asset_id, 'justification': 'need the asset later'},
+	)
+	assert response.status_code == 409
+	assert 'pending extension request' in response.json()['detail']
