@@ -27,7 +27,7 @@ class Settings(pydantic_settings.BaseSettings):
 	ai_search_index: str = 'help-docs'
 	llm_api_key: str = ''
 	llm_base_url: str = 'https://api.deepseek.com'
-	llm_model: str = 'deepseek-chat'
+	llm_model: str = 'deepseek-v4-flash'
 	embedding_model: str = 'BAAI/bge-small-en-v1.5'
 	# Empty → fastembed's default cache (~/.cache/fastembed).
 	embedding_cache_dir: str = ''

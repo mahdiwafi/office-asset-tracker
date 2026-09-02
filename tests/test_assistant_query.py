@@ -120,7 +120,7 @@ def test_answer_question_returns_citations_without_api_key(monkeypatch):
 def test_answer_question_generates_when_configured(monkeypatch):
 	monkeypatch.setattr(settings, 'llm_api_key', 'sk-test')
 	monkeypatch.setattr(settings, 'llm_base_url', 'https://api.deepseek.com')
-	monkeypatch.setattr(settings, 'llm_model', 'deepseek-chat')
+	monkeypatch.setattr(settings, 'llm_model', 'deepseek-v4-flash')
 	monkeypatch.setattr(
 		query,
 		'hybrid_search',
@@ -141,7 +141,7 @@ def test_answer_question_generates_when_configured(monkeypatch):
 	assert call['url'] == 'https://api.deepseek.com/chat/completions'
 	assert call['headers']['Authorization'] == 'Bearer sk-test'
 	body = call['json']
-	assert body['model'] == 'deepseek-chat'
+	assert body['model'] == 'deepseek-v4-flash'
 	assert body['max_tokens'] == query.MAX_ANSWER_TOKENS
 	assert body['temperature'] == query.GENERATION_TEMPERATURE
 	assert body['messages'][0]['role'] == 'system'
